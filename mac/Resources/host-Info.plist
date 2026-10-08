@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>ph.inze.camlink-fix</string>
+    <key>CFBundleName</key>
+    <string>CamLinkFix</string>
+    <key>CFBundleExecutable</key>
+    <string>camlink-host</string>
+    <key>CFBundleVersion</key>
+    <string>VERSION</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>camlink-fix installs a virtual camera that keeps your Cam Link working through resets.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>camlink-fix reads the Cam Link and passes its video through to the virtual camera.</string>
+</dict>
+</plist>

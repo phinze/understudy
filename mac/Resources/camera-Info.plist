@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>ph.inze.camlink-fix.camera</string>
+    <key>CFBundleName</key>
+    <string>camlink-fix camera</string>
+    <key>CFBundleExecutable</key>
+    <string>ph.inze.camlink-fix.camera</string>
+    <key>CFBundleVersion</key>
+    <string>VERSION</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundlePackageType</key>
+    <string>SYSX</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- sysextd requires this on the extension itself for the cmio
+         category; the host's copy doesn't count. -->
+    <key>NSSystemExtensionUsageDescription</key>
+    <string>A virtual camera that keeps your Cam Link working through resets.</string>
+    <!-- The mach service name must start with an app group the extension
+         holds (see camera.entitlements). -->
+    <key>CMIOExtension</key>
+    <dict>
+        <key>CMIOExtensionMachServiceName</key>
+        <string>TEAMID.ph.inze.camlink-fix.camera</string>
+    </dict>
+</dict>
+</plist>

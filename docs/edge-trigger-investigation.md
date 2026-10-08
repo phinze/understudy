@@ -3,6 +3,22 @@
 Notes-to-self for a follow-up session. Context is fresh now (2026-07); it
 won't be later.
 
+## UPDATE 3 (2026-10) — superseded by the virtual camera
+
+The make-or-break question below got its answer from the observe-only log:
+yes, apps still emit `device-control` while the Cam Link is wedged (Chrome did,
+right before both manual kicks the week of 2026-10-02). The same log showed two
+more things. The wedges developed hours after a clean wake check, and an ffmpeg
+probe once read "healthy" a minute before Chrome's video was plainly broken. So
+probing from the side is wrong in both directions: it misses wedges and it can
+cause storms.
+
+The fix was to stop being a side client. `mac/` adds a CoreMediaIO virtual
+camera whose host agent is the Cam Link's *only* client. Demand comes from the
+extension's own stream start (no log scraping), and health is whether our own
+session gets frames, which is exactly what the meeting app experiences. See the
+README's "Virtual camera mode". Everything below is history.
+
 ## UPDATE 2 (2026-07) — reactive trigger REVERTED: it caused a UVC interrupt storm
 
 The `device-control` reactive trigger from UPDATE 1 got reverted. It turned a

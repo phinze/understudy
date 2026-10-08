@@ -20,6 +20,31 @@ When triggered, it grabs a test frame via ffmpeg. If that fails, it power-cycles
 
 The hub and port are discovered dynamically from `uhubctl` output, so it should work with any uhubctl-compatible USB hub (VIA Labs chipset is the most common).
 
+## Virtual camera mode (macOS, recommended)
+
+The daemon above has a blind spot: it checks the camera on wake and USB events, but a Cam Link usually wedges hours later, right when you open a meeting. Checking it then means attaching a second client (ffmpeg) to a camera the meeting app is already streaming, which tipped a marginal Cam Link into a USB interrupt storm. So `mac/` takes a different approach.
+
+CamLinkFix.app installs a virtual camera, **Cam Link (camlink-fix)**, and you pick that in Zoom, Meet, and so on. Behind it, an agent is the real Cam Link's only client:
+
+- When an app opens the virtual camera, the agent opens the Cam Link and passes its video through (about 270ms to first frame). When the last app leaves, it lets go, so the Cam Link sits idle between meetings.
+- Because nothing else reads the Cam Link, "are my frames still arriving" is exactly what the meeting app sees. If they stop for 2 seconds, the agent power-cycles the port with uhubctl (quick cycle, then the full and extended resets) and reconnects. A quick cycle takes about 3.5 seconds.
+- During all of that the app keeps its camera. It sees a blurred, dimmed still of a recent moment with a quiet spinner, never a dead device or an error message, so there's nothing to reselect afterwards and nothing odd for the other people on the call.
+- `camlink-host kick` (or `camlink-kick` with the Nix module) forces a reset.
+
+It's a CoreMediaIO camera extension, so it has to be signed with a team that can grant the System Extension entitlement, installed in `/Applications`, and approved once in System Settings. `mac/bundle.sh` builds and signs it the same way as music-stuff's dj; see the comment at its top for the one-time developer portal setup. Then:
+
+```bash
+mac/bundle.sh --install    # build, sign, copy to /Applications, activate, (re)start the agent
+```
+
+With nix-darwin, set `services.camlink-fix.virtualCamera.enable = true;`. That runs the installed app's agent under launchd and turns off the Go daemon, whose probes would be a second client on the Cam Link.
+
+Logs go to the unified log:
+
+```bash
+log stream --level info --predicate 'subsystem BEGINSWITH "ph.inze.camlink-fix"'
+```
+
 ## Requirements
 
 - macOS (uses IOKit for USB device detection, CoreFoundation for sleep/wake)
