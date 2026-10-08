@@ -130,6 +130,10 @@ in
               CAMLINK_DEVICE_NAME = cfg.deviceName;
               CAMLINK_UHUBCTL = "${pkgs.uhubctl}/bin/uhubctl";
               CAMLINK_NOTIFY = if cfg.notify then "1" else "0";
+              # Nix can't build the signed app, so the agent compares this
+              # with the revision bundle.sh stamped into it and complains
+              # when the installed copy is behind.
+              CAMLINK_EXPECTED_REV = self.rev or self.dirtyRev or "unknown";
             };
             # Run only while the app is installed, rather than crash-looping
             # on a machine where bundle.sh hasn't been run yet.

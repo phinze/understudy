@@ -10,6 +10,9 @@
     <string>camlink-host</string>
     <key>CFBundleVersion</key>
     <string>VERSION</string>
+    <!-- The camlink-fix commit this was built from; see bundle.sh. -->
+    <key>CamLinkFixRevision</key>
+    <string>REVISION</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1</string>
     <key>CFBundlePackageType</key>

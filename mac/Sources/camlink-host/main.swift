@@ -124,6 +124,20 @@ log.info("starting (device=\(deviceName, privacy: .public) uhubctl=\(uhubctl, pr
 
 let agent = Agent(deviceName: deviceName, uhubctl: uhubctl, notify: notify)
 
+// Nix runs this app but can't build it, so the installed copy can fall
+// behind the camlink-fix revision nix-darwin is configured from. launchd
+// restarts us whenever that revision changes, so checking here catches
+// every bump.
+let builtFrom = Bundle.main.object(forInfoDictionaryKey: "CamLinkFixRevision") as? String ?? "unknown"
+if let expected = env["CAMLINK_EXPECTED_REV"], expected != builtFrom {
+    log.error("CamLinkFix.app was built from \(builtFrom, privacy: .public) but nix-darwin expects \(expected, privacy: .public); run mac/bundle.sh --install")
+    if notify {
+        Notifier.send("CamLinkFix.app is out of date. Run mac/bundle.sh --install from camlink-fix \(expected.prefix(7)).")
+    }
+} else {
+    log.info("built from \(builtFrom, privacy: .public)")
+}
+
 signal(SIGUSR1, SIG_IGN)
 let kickSource = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
 kickSource.setEventHandler { agent.kick() }

@@ -38,6 +38,25 @@ EXT_DIR="$CONTENTS/Library/SystemExtensions/$EXT_ID.systemextension"
 # so stamp every build.
 VERSION="$(date +%Y%m%d%H%M%S)"
 
+# The commit this build came from, stamped into the app so the agent can
+# tell when nix-darwin has moved camlink-fix past what's installed (Nix
+# can't build or sign the app itself). In jj the source is @, or @- when @
+# is the empty working-copy commit; uncommitted edits make it "dirty".
+source_revision() {
+    if command -v jj >/dev/null && jj root >/dev/null 2>&1; then
+        if [ -n "$(jj log --no-graph -r @ -T 'if(empty, "", "x")' 2>/dev/null)" ]; then
+            echo dirty
+        else
+            jj log --no-graph -r @- -T 'commit_id' 2>/dev/null
+        fi
+    elif git rev-parse HEAD >/dev/null 2>&1; then
+        if git diff --quiet HEAD 2>/dev/null; then git rev-parse HEAD; else echo dirty; fi
+    else
+        echo unknown
+    fi
+}
+REVISION="$(source_revision)"
+
 team_id_from_profile() {
     [ -f "$1" ] || return 1
     security cms -D -i "$1" 2>/dev/null \
@@ -61,9 +80,9 @@ echo "==> Assembling $APP_DIR..."
 rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS/MacOS" "$EXT_DIR/Contents/MacOS"
 
-# render <src> <dst>: fill in TEAMID and VERSION placeholders.
+# render <src> <dst>: fill in TEAMID, VERSION and REVISION placeholders.
 render() {
-    sed -e "s/TEAMID/$TEAM_ID/g" -e "s/VERSION/$VERSION/g" "$1" > "$2"
+    sed -e "s/TEAMID/$TEAM_ID/g" -e "s/VERSION/$VERSION/g" -e "s/REVISION/$REVISION/g" "$1" > "$2"
 }
 
 cp .build/release/camlink-host "$CONTENTS/MacOS/camlink-host"
@@ -154,4 +173,4 @@ if [ "$MODE" = "--install" ]; then
     fi
 fi
 
-echo "==> Done (version $VERSION)."
+echo "==> Done (version $VERSION, revision $REVISION)."
