@@ -30,12 +30,13 @@ final class Agent {
         }
     }
 
-    private let capture: CamLinkCapture
+    private let deviceName: String
+    private let capture: CameraCapture
     private let reset: UsbReset
     private let notify: Bool
     private var camera: VirtualCamera?
-    private let queue = DispatchQueue(label: "camlink-host.agent")
-    private let resetQueue = DispatchQueue(label: "camlink-host.reset")
+    private let queue = DispatchQueue(label: "understudy.agent")
+    private let resetQueue = DispatchQueue(label: "understudy.reset")
 
     // All of the state below is only touched on `queue`.
     private var phase = Phase.idle
@@ -52,8 +53,9 @@ final class Agent {
     private static let stableAfter: UInt64 = 30_000_000_000
 
     init(deviceName: String, uhubctl: String, notify: Bool) {
-        capture = CamLinkCapture(deviceName: deviceName)
-        reset = UsbReset(uhubctl: uhubctl)
+        self.deviceName = deviceName
+        capture = CameraCapture(deviceName: deviceName)
+        reset = UsbReset(deviceName: deviceName, uhubctl: uhubctl)
         self.notify = notify
     }
 
@@ -69,8 +71,8 @@ final class Agent {
         }
     }
 
-    /// A manual kick: reset now, from the quickest stage. Replaces
-    /// `camlink-fix --kick` for the times you can see it's broken and the
+    /// A manual kick: reset now, from the quickest stage. Replaces the
+    /// old daemon's `--kick` for the times you can see it's broken and the
     /// watchdog hasn't noticed.
     func kick() {
         queue.async { [self] in
@@ -141,7 +143,7 @@ final class Agent {
         guard capture.isDevicePresent else {
             phase = .waitingForDevice
             setStatus("not-connected")
-            log.info("Cam Link not on the bus; waiting for it")
+            log.info("\(self.deviceName, privacy: .public) not on the bus; waiting for it")
             return
         }
         phase = .streaming
@@ -185,7 +187,7 @@ final class Agent {
                 startCapture()
             case .gaveUp:
                 // A replug is the human version of our reset. Try again.
-                log.info("Cam Link replugged after giving up; retrying")
+                log.info("\(self.deviceName, privacy: .public) replugged after giving up; retrying")
                 nextStage = 0
                 startCapture()
             default:
@@ -213,7 +215,7 @@ final class Agent {
                 // Usually it's unplugged. But a dark port looks the same, so
                 // power the last known location back on: harmless if it's
                 // unplugged, and a rescue if something left it off.
-                log.error("reset: Cam Link not found on a uhubctl hub; re-powering its last known port")
+                log.error("reset: \(self.deviceName, privacy: .public) not found on a uhubctl hub; re-powering its last known port")
                 reset.heal()
                 queue.async { self.resetFinished(located: false) }
                 return
@@ -245,10 +247,10 @@ final class Agent {
     private func waitForDevice(deadline: UInt64) {
         guard demand > 0, phase == .resetting else { return }
         if capture.isDevicePresent {
-            log.info("reset: Cam Link is back; restarting capture")
+            log.info("reset: \(self.deviceName, privacy: .public) is back; restarting capture")
             startCapture()
         } else if nowNanos() > deadline {
-            log.error("reset: Cam Link didn't come back within 15s")
+            log.error("reset: \(self.deviceName, privacy: .public) didn't come back within 15s")
             phase = .streaming
             handle(.unhealthy("device missing after reset"))
         } else {
@@ -262,7 +264,7 @@ final class Agent {
         log.error("reset: giving up after every stage (\(reason, privacy: .public))")
         setStatus("gave-up")
         if notify {
-            Notifier.send("Cam Link didn't recover after resets. Try replugging it.")
+            Notifier.send("\(self.deviceName) didn't recover after resets. Try replugging it.")
         }
     }
 
@@ -281,7 +283,7 @@ enum Notifier {
     static func send(_ message: String) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        p.arguments = ["-e", "display notification \"\(message)\" with title \"Cam Link Fix\""]
+        p.arguments = ["-e", "display notification \"\(message)\" with title \"Understudy\""]
         try? p.run()
     }
 }

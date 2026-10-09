@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>ph.inze.camlink-fix.camera</string>
+    <string>ph.inze.understudy.camera</string>
     <key>CFBundleName</key>
-    <string>camlink-fix camera</string>
+    <string>Understudy camera</string>
     <key>CFBundleExecutable</key>
-    <string>ph.inze.camlink-fix.camera</string>
+    <string>ph.inze.understudy.camera</string>
     <key>CFBundleVersion</key>
     <string>VERSION</string>
     <key>CFBundleShortVersionString</key>
@@ -19,13 +19,13 @@
     <!-- sysextd requires this on the extension itself for the cmio
          category; the host's copy doesn't count. -->
     <key>NSSystemExtensionUsageDescription</key>
-    <string>A virtual camera that keeps your Cam Link working through resets.</string>
+    <string>A virtual camera that steps in when your real camera can't.</string>
     <!-- The mach service name must start with an app group the extension
          holds (see camera.entitlements). -->
     <key>CMIOExtension</key>
     <dict>
         <key>CMIOExtensionMachServiceName</key>
-        <string>TEAMID.ph.inze.camlink-fix.camera</string>
+        <string>TEAMID.ph.inze.understudy.camera</string>
     </dict>
 </dict>
 </plist>

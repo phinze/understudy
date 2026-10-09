@@ -6,7 +6,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// FrameDump grabs a few seconds of frames from the Cam Link exactly as the
-/// agent sees them (scaled to 1080p BGRA by CamLinkCapture) and writes them
+/// agent sees them (scaled to 1080p BGRA by CameraCapture) and writes them
 /// to a directory: a PNG and raw BGRA of the first, middle and last frame,
 /// plus one line per frame with its hash, how much it moved since the
 /// previous one, and what the hold detector makes of it. It's how we learn
@@ -14,10 +14,10 @@ import UniformTypeIdentifiers
 /// FrameSample.noSignal: run it with the camera off and paste the sample it
 /// prints.
 ///
-/// Run it through LaunchServices so TCC treats it as CamLinkFix (a shell
+/// Run it through LaunchServices so TCC treats it as Understudy (a shell
 /// launch asks on behalf of the terminal instead):
 ///
-///     open -n -W --stdout OUT /Applications/CamLinkFix.app --args dump-frames DIR [SECONDS]
+///     open -n -W --stdout OUT /Applications/Understudy.app --args dump-frames DIR [SECONDS]
 enum FrameDump {
     static func run(to dir: URL, seconds: Double, deviceName: String) -> Never {
         do {
@@ -27,7 +27,7 @@ enum FrameDump {
             exit(1)
         }
 
-        let capture = CamLinkCapture(deviceName: deviceName)
+        let capture = CameraCapture(deviceName: deviceName)
         // A full 1080p frame is 8MB, so keep only the ones we write out.
         // Touched on the capture queue until stop() has drained it.
         var kept: [(name: String, pixels: [UInt8])] = []
@@ -64,7 +64,7 @@ enum FrameDump {
         }
 
         guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
-            print("camera access not granted to CamLinkFix (status \(AVCaptureDevice.authorizationStatus(for: .video).rawValue))")
+            print("camera access not granted to Understudy (status \(AVCaptureDevice.authorizationStatus(for: .video).rawValue))")
             exit(1)
         }
         capture.start()

@@ -20,7 +20,7 @@ enum CaptureEvent {
     case held(Hold)
 }
 
-/// Why CamLinkCapture is holding frames back instead of forwarding them.
+/// Why CameraCapture is holding frames back instead of forwarding them.
 enum Hold: String {
     /// The Cam Link's own no-signal screen: the camera is off or unplugged
     /// from HDMI.
@@ -30,7 +30,7 @@ enum Hold: String {
     case frozen
 }
 
-/// CamLinkCapture holds the one and only session on the real Cam Link. It
+/// CameraCapture holds the one and only session on the real Cam Link. It
 /// runs only while some app wants the virtual camera, scales frames to the
 /// virtual camera's 1080p BGRA format, and hands them to `onFrame`. It judges
 /// health only from its own frames; deciding what to do about it is the
@@ -40,7 +40,7 @@ enum Hold: String {
 /// frame repeating) never reach `onFrame`. The virtual camera then falls back
 /// to its card, so a meeting sees a blurred still of you instead of an
 /// Elgato logo.
-final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     let deviceName: String
     var onFrame: ((CVPixelBuffer) -> Void)?
     var onEvent: ((CaptureEvent) -> Void)?
@@ -48,7 +48,7 @@ final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     /// which wants to see exactly what the Cam Link sends.
     var holdsFrames = true
 
-    private let queue = DispatchQueue(label: "camlink-host.capture", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "understudy.capture", qos: .userInteractive)
     private var session: AVCaptureSession?
     private var sessionObservers: [NSObjectProtocol] = []
     private var deviceObservers: [NSObjectProtocol] = []

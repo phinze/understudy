@@ -4,9 +4,9 @@ import Foundation
 import os.log
 import SystemExtensions
 
-let log = Logger(subsystem: "ph.inze.camlink-fix.host", category: "host")
+let log = Logger(subsystem: "ph.inze.understudy.host", category: "host")
 
-let extensionID = "ph.inze.camlink-fix.camera"
+let extensionID = "ph.inze.understudy.camera"
 
 func nowNanos() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
 
@@ -63,7 +63,7 @@ func submit(_ request: OSSystemExtensionRequest) -> Never {
 // holds an exclusive lock on its pid file for as long as it runs. The pid in
 // it is also how `kick` finds the agent.
 let stateDir = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".local/state/camlink-fix")
+    .appendingPathComponent(".local/state/understudy")
 let pidPath = stateDir.appendingPathComponent("host.pid").path
 
 func lockPidFile() -> Bool {
@@ -82,16 +82,16 @@ func kickAgent() -> Never {
         let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)),
         kill(pid, SIGUSR1) == 0
     else {
-        print("no running camlink-host agent found")
+        print("no running understudy agent found")
         exit(1)
     }
-    print("kicked camlink-host (pid \(pid))")
+    print("kicked understudy (pid \(pid))")
     exit(0)
 }
 
 // MARK: entry
 
-let usage = "usage: camlink-host [run|kick|activate|deactivate|dump-frames DIR [SECONDS]]"
+let usage = "usage: understudy [run|kick|activate|deactivate|dump-frames DIR [SECONDS]]"
 let command = CommandLine.arguments.dropFirst().first ?? "run"
 
 switch command {
@@ -109,7 +109,7 @@ case "dump-frames":
     }
     FrameDump.run(
         to: URL(fileURLWithPath: dir), seconds: args.dropFirst().first.flatMap(Double.init) ?? 3,
-        deviceName: ProcessInfo.processInfo.environment["CAMLINK_DEVICE_NAME"] ?? "Cam Link 4K")
+        deviceName: ProcessInfo.processInfo.environment["UNDERSTUDY_DEVICE_NAME"] ?? "Cam Link 4K")
 case "run":
     break
 default:
@@ -118,30 +118,30 @@ default:
 }
 
 // run: the long-lived agent. Launch it through LaunchServices or launchd
-// (`open /Applications/CamLinkFix.app`), not from a shell, so TCC asks about
-// camera access on behalf of CamLinkFix rather than your terminal.
+// (`open /Applications/Understudy.app`), not from a shell, so TCC asks about
+// camera access on behalf of Understudy rather than your terminal.
 guard lockPidFile() else {
     log.info("another agent is already running; exiting")
     exit(0)
 }
 
 let env = ProcessInfo.processInfo.environment
-let deviceName = env["CAMLINK_DEVICE_NAME"] ?? "Cam Link 4K"
-let uhubctl = env["CAMLINK_UHUBCTL"] ?? "uhubctl"
-let notify = env["CAMLINK_NOTIFY"] != "0"
+let deviceName = env["UNDERSTUDY_DEVICE_NAME"] ?? "Cam Link 4K"
+let uhubctl = env["UNDERSTUDY_UHUBCTL"] ?? "uhubctl"
+let notify = env["UNDERSTUDY_NOTIFY"] != "0"
 log.info("starting (device=\(deviceName, privacy: .public) uhubctl=\(uhubctl, privacy: .public) notify=\(notify))")
 
 let agent = Agent(deviceName: deviceName, uhubctl: uhubctl, notify: notify)
 
 // Nix runs this app but can't build it, so the installed copy can fall
-// behind the camlink-fix revision nix-darwin is configured from. launchd
+// behind the Understudy revision nix-darwin is configured from. launchd
 // restarts us whenever that revision changes, so checking here catches
 // every bump.
-let builtFrom = Bundle.main.object(forInfoDictionaryKey: "CamLinkFixRevision") as? String ?? "unknown"
-if let expected = env["CAMLINK_EXPECTED_REV"], expected != builtFrom {
-    log.error("CamLinkFix.app was built from \(builtFrom, privacy: .public) but nix-darwin expects \(expected, privacy: .public); run mac/bundle.sh --install")
+let builtFrom = Bundle.main.object(forInfoDictionaryKey: "UnderstudyRevision") as? String ?? "unknown"
+if let expected = env["UNDERSTUDY_EXPECTED_REV"], expected != builtFrom {
+    log.error("Understudy.app was built from \(builtFrom, privacy: .public) but nix-darwin expects \(expected, privacy: .public); run mac/bundle.sh --install")
     if notify {
-        Notifier.send("CamLinkFix.app is out of date. Run mac/bundle.sh --install from camlink-fix \(expected.prefix(7)).")
+        Notifier.send("Understudy.app is out of date. Run mac/bundle.sh --install from understudy \(expected.prefix(7)).")
     }
 } else {
     log.info("built from \(builtFrom, privacy: .public)")
@@ -158,7 +158,7 @@ AVCaptureDevice.requestAccess(for: .video) { granted in
     if granted {
         agent.run()
     } else {
-        log.error("camera access denied; allow CamLinkFix in System Settings → Privacy & Security → Camera")
+        log.error("camera access denied; allow Understudy in System Settings → Privacy & Security → Camera")
     }
 }
 

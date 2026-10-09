@@ -1,21 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 
-# Build, bundle, and sign CamLinkFix.app with its embedded camera extension.
+# Build, bundle, and sign Understudy.app with its embedded camera extension.
 # Same shape as music-stuff's dj/bundle.sh: SwiftPM builds the binaries, this
 # script hand-assembles the bundles and signs them with the Apple Development
 # cert.
 #
 # Prerequisites (one-time, developer portal, team 472M2826KP):
-#   1. App ID ph.inze.camlink-fix with the System Extension capability
-#   2. App ID ph.inze.camlink-fix.camera (no capabilities needed)
+#   1. App ID ph.inze.understudy with the System Extension capability
+#   2. App ID ph.inze.understudy.camera (no capabilities needed)
 #   3. A macOS App Development profile for each, saved as
 #      Resources/host.provisionprofile and Resources/camera.provisionprofile
 #
 # Without the profiles this still builds and ad-hoc signs, which is enough to
 # check that everything compiles and assembles, but sysextd will refuse it.
 #
-#   ./bundle.sh            build + assemble + sign into .build/CamLinkFix.app
+#   ./bundle.sh            build + assemble + sign into .build/Understudy.app
 #   ./bundle.sh --install  ...then copy to /Applications and activate
 
 cd "$(dirname "$0")"
@@ -28,9 +28,9 @@ esac
 
 HOST_PROFILE="Resources/host.provisionprofile"
 CAMERA_PROFILE="Resources/camera.provisionprofile"
-EXT_ID="ph.inze.camlink-fix.camera"
+EXT_ID="ph.inze.understudy.camera"
 
-APP_DIR=".build/CamLinkFix.app"
+APP_DIR=".build/Understudy.app"
 CONTENTS="$APP_DIR/Contents"
 EXT_DIR="$CONTENTS/Library/SystemExtensions/$EXT_ID.systemextension"
 
@@ -39,7 +39,7 @@ EXT_DIR="$CONTENTS/Library/SystemExtensions/$EXT_ID.systemextension"
 VERSION="$(date +%Y%m%d%H%M%S)"
 
 # The commit this build came from, stamped into the app so the agent can
-# tell when nix-darwin has moved camlink-fix past what's installed (Nix
+# tell when nix-darwin has moved Understudy past what's installed (Nix
 # can't build or sign the app itself). In jj the source is @, or @- when @
 # is the empty working-copy commit; uncommitted edits make it "dirty".
 source_revision() {
@@ -64,7 +64,7 @@ team_id_from_profile() {
 }
 
 SIGNED=1
-TEAM_ID="${CAMLINK_FIX_TEAM_ID:-$(team_id_from_profile "$HOST_PROFILE" || true)}"
+TEAM_ID="${UNDERSTUDY_TEAM_ID:-$(team_id_from_profile "$HOST_PROFILE" || true)}"
 if [ -z "$TEAM_ID" ] || [ ! -f "$CAMERA_PROFILE" ]; then
     echo "WARNING: provisioning profiles missing; ad-hoc signing (won't activate)." >&2
     SIGNED=0
@@ -85,10 +85,10 @@ render() {
     sed -e "s/TEAMID/$TEAM_ID/g" -e "s/VERSION/$VERSION/g" -e "s/REVISION/$REVISION/g" "$1" > "$2"
 }
 
-cp .build/release/camlink-host "$CONTENTS/MacOS/camlink-host"
+cp .build/release/understudy "$CONTENTS/MacOS/understudy"
 render Resources/host-Info.plist "$CONTENTS/Info.plist"
 
-cp .build/release/camlink-camera "$EXT_DIR/Contents/MacOS/$EXT_ID"
+cp .build/release/understudy-camera "$EXT_DIR/Contents/MacOS/$EXT_ID"
 render Resources/camera-Info.plist "$EXT_DIR/Contents/Info.plist"
 
 if [ "$SIGNED" = 1 ]; then
@@ -127,11 +127,11 @@ if [ "$MODE" = "--install" ]; then
     fi
     # /Applications, not ~/Applications: sysextd won't activate from anywhere
     # else.
-    echo "==> Installing to /Applications/CamLinkFix.app..."
-    rm -rf /Applications/CamLinkFix.app
-    ditto "$APP_DIR" /Applications/CamLinkFix.app
+    echo "==> Installing to /Applications/Understudy.app..."
+    rm -rf /Applications/Understudy.app
+    ditto "$APP_DIR" /Applications/Understudy.app
     echo "==> Activating..."
-    /Applications/CamLinkFix.app/Contents/MacOS/camlink-host activate
+    /Applications/Understudy.app/Contents/MacOS/understudy activate
 
     # macOS can lose an upgrade: while the old extension's launchd job is
     # still dying, CMIO decides the new one is "already running", skips
@@ -139,7 +139,7 @@ if [ "$MODE" = "--install" ]; then
     # activated. Installing once more (with a new version stamp) after the
     # old job is gone registers it cleanly.
     camera_listed() {
-        system_profiler SPCameraDataType 2>/dev/null | grep -q 'Cam Link (camlink-fix)'
+        system_profiler SPCameraDataType 2>/dev/null | grep -q '^ *Understudy:$'
     }
     listed=0
     for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -147,29 +147,29 @@ if [ "$MODE" = "--install" ]; then
         sleep 1
     done
     if [ "$listed" = 0 ]; then
-        if [ -n "${CAMLINK_BUNDLE_RETRY:-}" ]; then
+        if [ -n "${UNDERSTUDY_BUNDLE_RETRY:-}" ]; then
             echo "ERROR: virtual camera still missing after a retry; a reboot clears it." >&2
             exit 1
         fi
         echo "WARNING: virtual camera didn't register (macOS upgrade race); reinstalling once..." >&2
         sleep 1
-        CAMLINK_BUNDLE_RETRY=1 exec "$0" --install
+        UNDERSTUDY_BUNDLE_RETRY=1 exec "$0" --install
     fi
     echo "==> (Re)starting agent..."
-    AGENT_LABEL="org.nixos.camlink-host"
+    AGENT_LABEL="org.nixos.understudy"
     if launchctl print "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1; then
         # nix-darwin owns the agent; let launchd restart it with its own env.
         launchctl kickstart -k "gui/$(id -u)/$AGENT_LABEL"
     else
         # Restart through LaunchServices so TCC attributes camera access to
-        # CamLinkFix, not to whatever terminal ran this script. That launch
+        # Understudy, not to whatever terminal ran this script. That launch
         # doesn't inherit our PATH, so pass uhubctl's location explicitly.
-        pkill -f '/Applications/CamLinkFix.app/Contents/MacOS/camlink-host' || true
+        pkill -f '/Applications/Understudy.app/Contents/MacOS/understudy' || true
         # LaunchServices needs a beat to notice the old instance is gone, or
         # open fails with -600.
-        while pgrep -f '/Applications/CamLinkFix.app/Contents/MacOS/camlink-host' >/dev/null; do sleep 0.2; done
+        while pgrep -f '/Applications/Understudy.app/Contents/MacOS/understudy' >/dev/null; do sleep 0.2; done
         sleep 1
-        open -g --env "CAMLINK_UHUBCTL=$(command -v uhubctl || echo uhubctl)" /Applications/CamLinkFix.app
+        open -g --env "UNDERSTUDY_UHUBCTL=$(command -v uhubctl || echo uhubctl)" /Applications/Understudy.app
     fi
 fi
 

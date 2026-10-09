@@ -4,7 +4,7 @@ import Foundation
 import IOKit.audio
 import os.log
 
-let log = Logger(subsystem: "ph.inze.camlink-fix.camera", category: "extension")
+let log = Logger(subsystem: "ph.inze.understudy.camera", category: "extension")
 
 // One fixed format for now. Apps pick from what we advertise, and the host
 // scales whatever mode the Cam Link is in down to this before sending it.
@@ -51,7 +51,7 @@ final class ProviderSource: NSObject, CMIOExtensionProviderSource {
     init(clientQueue: DispatchQueue?) {
         super.init()
         provider = CMIOExtensionProvider(source: self, clientQueue: clientQueue)
-        deviceSource = DeviceSource(localizedName: "Cam Link (camlink-fix)")
+        deviceSource = DeviceSource(localizedName: "Understudy")
         do {
             try provider.addDevice(deviceSource.device)
         } catch {
@@ -74,7 +74,7 @@ final class ProviderSource: NSObject, CMIOExtensionProviderSource {
     {
         let props = CMIOExtensionProviderProperties(dictionary: [:])
         if properties.contains(.providerManufacturer) {
-            props.manufacturer = "camlink-fix"
+            props.manufacturer = "Understudy"
         }
         return props
     }
@@ -96,7 +96,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var status = ""
 
     // All of the state below is only touched on `queue`.
-    private let queue = DispatchQueue(label: "camlink-camera.relay", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "understudy-camera.relay", qos: .userInteractive)
     private var sourceStreaming = false
     private var sinkClient: CMIOExtensionClient?
     private var lastSinkFrame: UInt64 = 0
@@ -141,10 +141,10 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             minFrameDuration: frameDuration, validFrameDurations: nil)
 
         sourceStream = StreamSource(
-            localizedName: "camlink-fix.video", streamID: sourceStreamID, streamFormat: format,
+            localizedName: "understudy.video", streamID: sourceStreamID, streamFormat: format,
             device: device)
         sinkStream = SinkSource(
-            localizedName: "camlink-fix.sink", streamID: sinkStreamID, streamFormat: format,
+            localizedName: "understudy.sink", streamID: sinkStreamID, streamFormat: format,
             device: device)
         do {
             try device.addStream(sourceStream.stream)
@@ -166,7 +166,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             props.transportType = kIOAudioDeviceTransportTypeVirtual
         }
         if properties.contains(.deviceModel) {
-            props.model = "camlink-fix virtual camera"
+            props.model = "Understudy virtual camera"
         }
         if properties.contains(demandProperty) {
             let streaming = queue.sync { sourceStreaming }

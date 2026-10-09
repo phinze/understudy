@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "camlink-fix-mac",
+    name: "understudy",
     platforms: [
         .macOS(.v14)
     ],
@@ -10,9 +10,9 @@ let package = Package(
         // The CMIO camera extension: the virtual camera apps actually open.
         // Sandboxed and deliberately dumb; it serves frames and draws the
         // fallback card, nothing more.
-        .executableTarget(name: "camlink-camera"),
+        .executableTarget(name: "understudy-camera"),
         // The host app: installs the extension, and (from Phase 1) owns the
         // real Cam Link session and the uhubctl bounce.
-        .executableTarget(name: "camlink-host"),
+        .executableTarget(name: "understudy"),
     ]
 )

@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>ph.inze.camlink-fix</string>
+    <string>ph.inze.understudy</string>
     <key>CFBundleName</key>
-    <string>CamLinkFix</string>
+    <string>Understudy</string>
     <key>CFBundleExecutable</key>
-    <string>camlink-host</string>
+    <string>understudy</string>
     <key>CFBundleVersion</key>
     <string>VERSION</string>
-    <!-- The camlink-fix commit this was built from; see bundle.sh. -->
-    <key>CamLinkFixRevision</key>
+    <!-- The Understudy commit this was built from; see bundle.sh. -->
+    <key>UnderstudyRevision</key>
     <string>REVISION</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1</string>
@@ -22,8 +22,8 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSSystemExtensionUsageDescription</key>
-    <string>camlink-fix installs a virtual camera that keeps your Cam Link working through resets.</string>
+    <string>Understudy installs a virtual camera that steps in when your real camera can't.</string>
     <key>NSCameraUsageDescription</key>
-    <string>camlink-fix reads the Cam Link and passes its video through to the virtual camera.</string>
+    <string>Understudy reads your real camera and passes its video through to the virtual camera.</string>
 </dict>
 </plist>

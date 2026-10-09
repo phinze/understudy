@@ -63,7 +63,7 @@ struct FrameSample: Equatable {
 
     /// The Cam Link 4K's "elgato - NO SIGNAL -" screen as the host sees it
     /// (scaled to 1080p BGRA). If a firmware update changes it, capture a new
-    /// one with `camlink-host dump-frames` while the camera is off and paste
+    /// one with `understudy dump-frames` while the camera is off and paste
     /// the sample it prints here.
     static let noSignal = Data(base64Encoded: noSignalBase64, options: .ignoreUnknownCharacters)
         .flatMap { FrameSample(values: [UInt8]($0)) }

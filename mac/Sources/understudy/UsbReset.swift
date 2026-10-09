@@ -34,6 +34,7 @@ final class UsbReset {
         Stage(name: "extended reset", offSeconds: 30, bothPorts: true, settleSeconds: 2),
     ]
 
+    private let deviceName: String
     private let uhubctl: String
     private static let callTimeout: TimeInterval = 15
 
@@ -42,9 +43,12 @@ final class UsbReset {
     // the device to locate it again. Temp dir on purpose; a reboot re-powers
     // USB anyway.
     private let stateURL = URL(fileURLWithPath: NSTemporaryDirectory())
-        .appendingPathComponent("camlink-host.location.json")
+        .appendingPathComponent("understudy.location.json")
 
-    init(uhubctl: String) {
+    /// deviceName only has to be part of uhubctl's description of the port:
+    /// "Cam Link 4K" matches "Elgato Cam Link 4K".
+    init(deviceName: String, uhubctl: String) {
+        self.deviceName = deviceName
         self.uhubctl = uhubctl
     }
 
@@ -62,7 +66,7 @@ final class UsbReset {
         for line in out.split(separator: "\n") {
             if let m = line.firstMatch(of: hubRe) {
                 hub = String(m.1)
-            } else if let m = line.firstMatch(of: portRe), line.contains("Cam Link"), !hub.isEmpty {
+            } else if let m = line.firstMatch(of: portRe), line.contains(deviceName), !hub.isEmpty {
                 found = HubLocation(hub: hub, port: String(m.1))
                 break
             }
