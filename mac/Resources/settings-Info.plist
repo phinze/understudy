@@ -12,6 +12,8 @@
     <string>VERSION</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>NSCameraUsageDescription</key>

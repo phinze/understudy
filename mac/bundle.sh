@@ -83,7 +83,11 @@ swift build -c release
 
 echo "==> Assembling $APP_DIR..."
 rm -rf "$APP_DIR" "$SETTINGS_DIR"
-mkdir -p "$CONTENTS/MacOS" "$EXT_DIR/Contents/MacOS" "$SETTINGS_DIR/Contents/MacOS"
+mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$EXT_DIR/Contents/MacOS" \
+    "$SETTINGS_DIR/Contents/MacOS" "$SETTINGS_DIR/Contents/Resources"
+# Both apps share one icon; Resources/icon/make-icon.sh redraws it.
+cp Resources/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
+cp Resources/AppIcon.icns "$SETTINGS_DIR/Contents/Resources/AppIcon.icns"
 
 # render <src> <dst>: fill in TEAMID, VERSION and REVISION placeholders.
 render() {
