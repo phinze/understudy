@@ -15,6 +15,19 @@ enum CaptureEvent {
     case disconnected
     /// The device (re)appeared on the bus.
     case connected
+    /// The device is healthy but isn't showing a camera, so we've stopped
+    /// forwarding its frames. Ends with `.healthy` when live video returns.
+    case held(Hold)
+}
+
+/// Why CamLinkCapture is holding frames back instead of forwarding them.
+enum Hold: String {
+    /// The Cam Link's own no-signal screen: the camera is off or unplugged
+    /// from HDMI.
+    case noSignal = "no-signal"
+    /// The same frame over and over, like the black the Cam Link sends for a
+    /// moment while it loses its source.
+    case frozen
 }
 
 /// CamLinkCapture holds the one and only session on the real Cam Link. It
@@ -22,10 +35,18 @@ enum CaptureEvent {
 /// virtual camera's 1080p BGRA format, and hands them to `onFrame`. It judges
 /// health only from its own frames; deciding what to do about it is the
 /// agent's job.
+///
+/// Frames that aren't a camera (the Cam Link's no-signal screen, or one
+/// frame repeating) never reach `onFrame`. The virtual camera then falls back
+/// to its card, so a meeting sees a blurred still of you instead of an
+/// Elgato logo.
 final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     let deviceName: String
     var onFrame: ((CVPixelBuffer) -> Void)?
     var onEvent: ((CaptureEvent) -> Void)?
+    /// Off hands every frame to `onFrame`, held or not. For dump-frames,
+    /// which wants to see exactly what the Cam Link sends.
+    var holdsFrames = true
 
     private let queue = DispatchQueue(label: "camlink-host.capture", qos: .userInteractive)
     private var session: AVCaptureSession?
@@ -38,6 +59,8 @@ final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var lastSent: UInt64 = 0
     private var frames = 0
     private var unhealthy = false
+    private var lastSample: FrameSample?
+    private var hold: Hold?
     private var watchdog: DispatchSourceTimer?
 
     // Cam Link with a 1080p60 source delivers ~60fps; the virtual camera
@@ -109,6 +132,8 @@ final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             lastFrame = 0
             frames = 0
             unhealthy = false
+            lastSample = nil
+            hold = nil
             startWatchdog()
             // startRunning blocks until the device is streaming, so it stays
             // on the capture queue rather than the caller's.
@@ -139,6 +164,9 @@ final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         } else if unhealthy {
             log.info("capture: frames resumed after \((now - self.lastFrame) / 1_000_000)ms gap")
             onEvent?(.healthy)
+            // .healthy clears the agent's status, so a hold that's still on
+            // has to be reported again.
+            hold = nil
         }
         unhealthy = false
         frames += 1
@@ -148,7 +176,36 @@ final class CamLinkCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
             let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
         else { return }
         lastSent = now
+
+        if let reason = holdReason(pixelBuffer) {
+            if hold != reason {
+                log.info("capture: holding frames (\(reason.rawValue, privacy: .public))")
+                hold = reason
+                onEvent?(.held(reason))
+            }
+            return
+        }
+        if hold != nil {
+            log.info("capture: live video is back")
+            hold = nil
+            onEvent?(.healthy)
+        }
         onFrame?(pixelBuffer)
+    }
+
+    /// Whether this frame should be held back rather than forwarded. Only
+    /// looks at the frames we'd send, not the Cam Link's full 60fps, so a
+    /// 30p source that repeats each frame over 60Hz HDMI isn't read as
+    /// frozen.
+    private func holdReason(_ buffer: CVPixelBuffer) -> Hold? {
+        guard holdsFrames, let sample = FrameSample(buffer) else { return nil }
+        defer { lastSample = sample }
+        // The no-signal check is decisive on its own, so it holds even the
+        // first frame of a session: a meeting that starts with the camera
+        // off never sees the logo.
+        if sample.isNoSignal { return .noSignal }
+        if sample == lastSample { return .frozen }
+        return nil
     }
 
     // MARK: health

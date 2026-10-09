@@ -70,7 +70,7 @@ final class VirtualCamera {
             CMIOObjectSetPropertyData(deviceID, &addr, 0, nil, UInt32(MemoryLayout<CFString>.size), $0)
         }
         if err != noErr {
-            log.error("setting card status failed: \(err)")
+            log.error("setting card status to \(status.debugDescription, privacy: .public) failed: \(err)")
         }
     }
 

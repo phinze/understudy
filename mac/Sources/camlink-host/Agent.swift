@@ -156,6 +156,12 @@ final class Agent {
             healthySince = nowNanos()
             setStatus(nil)
 
+        case .held(let hold):
+            // Not a wedge: the Cam Link is fine, it just has nothing to show.
+            // The card covers it, and the status says whether to spin.
+            guard phase == .streaming else { return }
+            setStatus(hold.rawValue)
+
         case .unhealthy(let reason):
             guard phase == .streaming, demand > 0 else { return }
             if let since = healthySince, nowNanos() - since > Self.stableAfter {
@@ -263,7 +269,8 @@ final class Agent {
     // MARK: card
 
     /// Tells the extension what state we're in while there's no live video:
-    /// "reconnecting", "not-connected", "gave-up", or nil for none of those.
+    /// "reconnecting", "not-connected", "gave-up", "no-signal", "frozen", or
+    /// nil for none of those.
     /// The card turns it into spinner-or-not, never text.
     private func setStatus(_ status: String?) {
         camera?.setStatus(status ?? "")

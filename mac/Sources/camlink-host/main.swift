@@ -91,7 +91,7 @@ func kickAgent() -> Never {
 
 // MARK: entry
 
-let usage = "usage: camlink-host [run|kick|activate|deactivate]"
+let usage = "usage: camlink-host [run|kick|activate|deactivate|dump-frames DIR [SECONDS]]"
 let command = CommandLine.arguments.dropFirst().first ?? "run"
 
 switch command {
@@ -101,6 +101,15 @@ case "deactivate":
     submit(.deactivationRequest(forExtensionWithIdentifier: extensionID, queue: .main))
 case "kick":
     kickAgent()
+case "dump-frames":
+    let args = Array(CommandLine.arguments.dropFirst(2))
+    guard let dir = args.first else {
+        print(usage)
+        exit(2)
+    }
+    FrameDump.run(
+        to: URL(fileURLWithPath: dir), seconds: args.dropFirst().first.flatMap(Double.init) ?? 3,
+        deviceName: ProcessInfo.processInfo.environment["CAMLINK_DEVICE_NAME"] ?? "Cam Link 4K")
 case "run":
     break
 default:

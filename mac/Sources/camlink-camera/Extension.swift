@@ -27,9 +27,9 @@ let sinkStreamID = UUID(uuidString: "A2D94C5B-7E31-4B8F-9C06-3F5E8A1D7B24")!
 let demandProperty = CMIOExtensionProperty(rawValue: "4cc_dmnd_glob_0000")
 
 // statusProperty is the other direction: the host's state while there's no
-// live video. "" (starting up or waiting), "reconnecting", "not-connected",
-// or "gave-up". It only picks whether the card spins; the card never shows
-// text, since meeting participants see it.
+// live video. "" (starting up or waiting), "reconnecting", "frozen",
+// "not-connected", "no-signal", or "gave-up". It only picks whether the card
+// spins; the card never shows text, since meeting participants see it.
 let statusProperty = CMIOExtensionProperty(rawValue: "4cc_stat_glob_0000")
 
 // The backdrop refreshes from live video once per session after the
@@ -193,8 +193,8 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             status = value
             log.info("card status: \(value.isEmpty ? "(none)" : value, privacy: .public)")
             // Spin while something is about to happen; sit still when we're
-            // waiting on a human.
-            card.spinning = value != "not-connected" && value != "gave-up"
+            // waiting on a human (plug it in, turn the camera on).
+            card.spinning = !["not-connected", "no-signal", "gave-up"].contains(value)
         }
     }
 
@@ -216,6 +216,9 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
 
             showingLive = false
             card.show(backdrop)
+            // Forget the last session's status along with its spinner, or a
+            // repeat of it this session would be skipped as unchanged.
+            status = ""
             card.spinning = true
             // Take a fresh backdrop early in every session.
             backdropTakenAt = 0
