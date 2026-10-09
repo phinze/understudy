@@ -34,6 +34,7 @@ final class Agent {
     private let capture: CameraCapture
     private let reset: UsbReset
     private let notify: Bool
+    private let effects: EffectChain
     private var camera: VirtualCamera?
     private let queue = DispatchQueue(label: "understudy.agent")
     private let resetQueue = DispatchQueue(label: "understudy.reset")
@@ -52,11 +53,12 @@ final class Agent {
     /// over from the quick cycle.
     private static let stableAfter: UInt64 = 30_000_000_000
 
-    init(deviceName: String, uhubctl: String, notify: Bool) {
+    init(deviceName: String, uhubctl: String, notify: Bool, effects: EffectChain) {
         self.deviceName = deviceName
         capture = CameraCapture(deviceName: deviceName)
         reset = UsbReset(deviceName: deviceName, uhubctl: uhubctl)
         self.notify = notify
+        self.effects = effects
     }
 
     func run() {
@@ -108,7 +110,9 @@ final class Agent {
             return
         }
         self.camera = camera
-        capture.onFrame = { [weak camera] buffer in camera?.send(buffer) }
+        // Only live frames get here (CameraCapture holds the rest back), so
+        // effects never draw over the card.
+        capture.onFrame = { [weak camera, effects] buffer in camera?.send(effects.apply(buffer)) }
         camera.onDemandChange(queue: queue) { [weak self] in self?.demandChanged() }
         log.info("attached to virtual camera (device \(camera.deviceID))")
         demandChanged()

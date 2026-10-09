@@ -91,7 +91,7 @@ func kickAgent() -> Never {
 
 // MARK: entry
 
-let usage = "usage: understudy [run|kick|activate|deactivate|dump-frames DIR [SECONDS]]"
+let usage = "usage: understudy [run|kick|activate|deactivate|dump-frames DIR [SECONDS]|render-effect IN OUT [SETTINGS]]"
 let command = CommandLine.arguments.dropFirst().first ?? "run"
 
 switch command {
@@ -110,6 +110,15 @@ case "dump-frames":
     FrameDump.run(
         to: URL(fileURLWithPath: dir), seconds: args.dropFirst().first.flatMap(Double.init) ?? 3,
         deviceName: ProcessInfo.processInfo.environment["UNDERSTUDY_DEVICE_NAME"] ?? "Cam Link 4K")
+case "render-effect":
+    let args = Array(CommandLine.arguments.dropFirst(2))
+    guard args.count == 2 || args.count == 3 else {
+        print(usage)
+        exit(2)
+    }
+    RenderEffect.run(
+        input: URL(fileURLWithPath: args[0]), output: URL(fileURLWithPath: args[1]),
+        settingsURL: args.count == 3 ? URL(fileURLWithPath: args[2]) : nil)
 case "run":
     break
 default:
@@ -131,7 +140,11 @@ let uhubctl = env["UNDERSTUDY_UHUBCTL"] ?? "uhubctl"
 let notify = env["UNDERSTUDY_NOTIFY"] != "0"
 log.info("starting (device=\(deviceName, privacy: .public) uhubctl=\(uhubctl, privacy: .public) notify=\(notify))")
 
-let agent = Agent(deviceName: deviceName, uhubctl: uhubctl, notify: notify)
+let effects = EffectChain()
+let effectsWatcher = EffectsWatcher(onChange: effects.update)
+effectsWatcher.start()
+
+let agent = Agent(deviceName: deviceName, uhubctl: uhubctl, notify: notify, effects: effects)
 
 // Nix runs this app but can't build it, so the installed copy can fall
 // behind the Understudy revision nix-darwin is configured from. launchd
