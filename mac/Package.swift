@@ -16,5 +16,8 @@ let package = Package(
         // The host app: installs the extension, and (from Phase 1) owns the
         // real Cam Link session and the uhubctl bounce.
         .executableTarget(name: "understudy", dependencies: ["UnderstudyShared"]),
+        // The settings app: edits effects.json, nothing else. No camera, no
+        // extension, so it's safe to open and quit mid-meeting.
+        .executableTarget(name: "understudy-settings", dependencies: ["UnderstudyShared"]),
     ]
 )

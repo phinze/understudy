@@ -18,7 +18,15 @@ All in `mac/` (Swift, SwiftPM), plus the nix-darwin module in `nix/`:
   `stat` property (host state, picks spinner or not).
 - `Sources/understudy/` - Host app and agent (`understudy`). Listens on
   `dmnd`, captures the real camera with AVFoundation, feeds the sink, and runs the
-  watchdog and uhubctl reset (`UsbReset.swift`).
+  watchdog and uhubctl reset (`UsbReset.swift`). Draws effects (blob
+  tracking today) on live frames between the hold detector and the sink,
+  configured by `~/.local/state/understudy/effects.json`, which it watches.
+  `understudy render-effect IN OUT [SETTINGS]` runs a clip or still through
+  the same code.
+- `Sources/understudy-settings/` - Understudy Settings.app, a SwiftUI editor
+  for effects.json and nothing else: no camera, no talking to the agent.
+- `Sources/UnderstudyShared/` - The effects.json schema both of those share.
+  Decoding clamps or defaults bad fields instead of failing.
 - `bundle.sh` - Builds, assembles and signs `Understudy.app` outside Nix.
   The CMIO device and stream UUIDs in `Extension.swift` must never change:
   apps remember the camera by them.

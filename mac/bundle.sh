@@ -15,7 +15,10 @@ set -euo pipefail
 # Without the profiles this still builds and ad-hoc signs, which is enough to
 # check that everything compiles and assembles, but sysextd will refuse it.
 #
-#   ./bundle.sh            build + assemble + sign into .build/Understudy.app
+# It also builds "Understudy Settings.app", the effects editor. That one has
+# no restricted entitlements, so it needs no profile of its own.
+#
+#   ./bundle.sh            build + assemble + sign into .build/
 #   ./bundle.sh --install  ...then copy to /Applications and activate
 
 cd "$(dirname "$0")"
@@ -33,6 +36,7 @@ EXT_ID="ph.inze.understudy.camera"
 APP_DIR=".build/Understudy.app"
 CONTENTS="$APP_DIR/Contents"
 EXT_DIR="$CONTENTS/Library/SystemExtensions/$EXT_ID.systemextension"
+SETTINGS_DIR=".build/Understudy Settings.app"
 
 # sysextd only replaces an installed extension with a *newer* CFBundleVersion,
 # so stamp every build.
@@ -77,8 +81,8 @@ unset SDKROOT DEVELOPER_DIR
 swift build -c release
 
 echo "==> Assembling $APP_DIR..."
-rm -rf "$APP_DIR"
-mkdir -p "$CONTENTS/MacOS" "$EXT_DIR/Contents/MacOS"
+rm -rf "$APP_DIR" "$SETTINGS_DIR"
+mkdir -p "$CONTENTS/MacOS" "$EXT_DIR/Contents/MacOS" "$SETTINGS_DIR/Contents/MacOS"
 
 # render <src> <dst>: fill in TEAMID, VERSION and REVISION placeholders.
 render() {
@@ -90,6 +94,9 @@ render Resources/host-Info.plist "$CONTENTS/Info.plist"
 
 cp .build/release/understudy-camera "$EXT_DIR/Contents/MacOS/$EXT_ID"
 render Resources/camera-Info.plist "$EXT_DIR/Contents/Info.plist"
+
+cp .build/release/understudy-settings "$SETTINGS_DIR/Contents/MacOS/understudy-settings"
+render Resources/settings-Info.plist "$SETTINGS_DIR/Contents/Info.plist"
 
 if [ "$SIGNED" = 1 ]; then
     cp "$HOST_PROFILE" "$CONTENTS/embedded.provisionprofile"
@@ -118,7 +125,10 @@ codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
     --entitlements "$ENT_DIR/host.entitlements" "$APP_DIR"
 
+codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$SETTINGS_DIR"
+
 codesign --verify --strict --deep "$APP_DIR"
+codesign --verify --strict "$SETTINGS_DIR"
 
 if [ "$MODE" = "--install" ]; then
     if [ "$SIGNED" = 0 ]; then
@@ -130,6 +140,8 @@ if [ "$MODE" = "--install" ]; then
     echo "==> Installing to /Applications/Understudy.app..."
     rm -rf /Applications/Understudy.app
     ditto "$APP_DIR" /Applications/Understudy.app
+    rm -rf "/Applications/Understudy Settings.app"
+    ditto "$SETTINGS_DIR" "/Applications/Understudy Settings.app"
     echo "==> Activating..."
     /Applications/Understudy.app/Contents/MacOS/understudy activate
 
