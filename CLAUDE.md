@@ -1,30 +1,24 @@
 # camlink-fix
 
-A Go daemon that automatically resets the Elgato Cam Link 4K when it becomes
-unresponsive after macOS sleep/wake cycles.
+A macOS virtual camera that keeps the Elgato Cam Link 4K working through the
+wedges and resets it suffers after sleep/wake cycles. The last version of the
+older Go probe-and-reset daemon is tagged `camlink-fix-final`.
 
 ## Architecture
 
-- `cmd/camlink-fix/` - Entry point, event loop, signal handling
-- `internal/usbwatch/` - IOKit USB device arrival detection via purego
-- `internal/sleepwatch/` - Sleep/wake detection via mac-sleep-notifier
-- `internal/health/` - Camera health checks (system_profiler + ffmpeg)
-- `internal/reset/` - Escalating USB power cycle via uhubctl
-- `internal/notify/` - macOS notifications via osascript
-- `nix/` - Nix module and packaging
-- `mac/` - Virtual camera mode (Swift, SwiftPM), which replaces the daemon on
-  macOS:
-  - `Sources/camlink-camera/` - CMIO camera extension. Relays frames from its
-    sink stream to its source stream and draws the no-video card. Publishes a
-    `dmnd` device property (is any app streaming?) and accepts a writable
-    `stat` property (host state, picks spinner or not).
-  - `Sources/camlink-host/` - Host app and agent. Listens on `dmnd`, captures
-    the real Cam Link with AVFoundation, feeds the sink, and runs the
-    watchdog and uhubctl reset (`UsbReset.swift`, ported from
-    `internal/reset`).
-  - `bundle.sh` - Builds, assembles and signs `CamLinkFix.app` outside Nix.
+All in `mac/` (Swift, SwiftPM), plus the nix-darwin module in `nix/`:
 
-### Virtual camera gotchas
+- `Sources/camlink-camera/` - CMIO camera extension. Relays frames from its
+  sink stream to its source stream and draws the no-video card. Publishes a
+  `dmnd` device property (is any app streaming?) and accepts a writable
+  `stat` property (host state, picks spinner or not).
+- `Sources/camlink-host/` - Host app and agent. Listens on `dmnd`, captures
+  the real Cam Link with AVFoundation, feeds the sink, and runs the
+  watchdog and uhubctl reset (`UsbReset.swift`).
+- `bundle.sh` - Builds, assembles and signs `CamLinkFix.app` outside Nix.
+- `nix/module.nix` - Runs the installed app's agent under launchd.
+
+## Gotchas
 
 - CMIO stream direction is from the system's side: the source (what apps
   read) is 1 and the sink is 0. Getting it backwards makes the host a second
@@ -43,19 +37,12 @@ unresponsive after macOS sleep/wake cycles.
 ## Building
 
 ```bash
-go build ./cmd/camlink-fix
-```
-
-## Running
-
-```bash
-./camlink-fix --uhubctl-path /path/to/uhubctl --ffmpeg-path /path/to/ffmpeg
+mac/bundle.sh             # build + sign into mac/.build/CamLinkFix.app
+mac/bundle.sh --install   # also install to /Applications and restart the agent
 ```
 
 ## Nix
 
-```bash
-nix build
-```
-
-The flake exports `darwinModules.default` for use in nix-darwin configurations.
+The flake exports only `darwinModules.default` for nix-darwin. Nix can't build
+the signed app; the module runs the copy `bundle.sh --install` put in
+`/Applications`.

@@ -14,7 +14,8 @@ struct HubLocation: Codable, CustomStringConvertible {
 
 /// UsbReset power-cycles the Cam Link's hub port with uhubctl: the software
 /// version of reaching under the desk. Ported from the Go daemon's
-/// internal/reset, same stages and same heal-on-startup backstop.
+/// internal/reset (tag camlink-fix-final), same stages and same
+/// heal-on-startup backstop.
 final class UsbReset {
     struct Stage {
         let name: String
