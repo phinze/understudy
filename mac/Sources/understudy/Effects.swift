@@ -192,6 +192,6 @@ extension EffectSettings {
         guard blobs.enabled else { return "all off" }
         let b = blobs
         return "blobs on (count=\(b.boxCount) reselect=\(b.reselectFrames) threshold=\(b.threshold) invert=\(b.invert) "
-            + "lines=\(b.lineProbability) color=\(b.color) labels=\(b.labels.rawValue) seed=\(b.seed))"
+            + "lines=\(b.lineProbability) width=\(b.lineWidth) color=\(b.color) labels=\(b.labels.rawValue) seed=\(b.seed))"
     }
 }

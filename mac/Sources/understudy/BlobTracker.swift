@@ -227,8 +227,10 @@ final class BlobTracker: Effect {
         ctx.setStrokeColor(color)
         ctx.setFillColor(color)
 
-        ctx.setLineWidth(1 * unit)
-        ctx.setLineDash(phase: 0, lengths: [4 * unit, 3 * unit])
+        // Dashes scale with the line, or thick connectors turn to dots.
+        let linkWidth = settings.lineWidth * 2 / 3 * unit
+        ctx.setLineWidth(linkWidth)
+        ctx.setLineDash(phase: 0, lengths: [4 * max(linkWidth, unit), 3 * max(linkWidth, unit)])
         for (a, b) in links {
             guard let ta = byID[a], let tb = byID[b] else { continue }
             ctx.move(to: center(ta))
@@ -237,7 +239,7 @@ final class BlobTracker: Effect {
         ctx.strokePath()
         ctx.setLineDash(phase: 0, lengths: [])
 
-        ctx.setLineWidth(1.5 * unit)
+        ctx.setLineWidth(settings.lineWidth * unit)
         for id in picked {
             guard let t = byID[id] else { continue }
             let b = t.blob

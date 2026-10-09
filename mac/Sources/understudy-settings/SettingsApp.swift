@@ -97,6 +97,9 @@ struct EffectsForm: View {
 
             Section("Look") {
                 ColorPicker("Color", selection: colorBinding, supportsOpacity: false)
+                LabeledSlider(
+                    "Line width", value: blobs.lineWidth, in: BlobSettings.lineWidthRange,
+                    format: { String(format: "%.1fpx", $0) })
                 Picker("Labels", selection: blobs.labels) {
                     Text("None").tag(BlobSettings.LabelStyle.none)
                     Text("ID").tag(BlobSettings.LabelStyle.id)

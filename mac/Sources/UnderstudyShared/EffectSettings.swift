@@ -70,6 +70,9 @@ public struct BlobSettings: Codable, Equatable, Sendable {
     public var invert = false
     /// Chance that each picked blob gets a connector line to another.
     public var lineProbability = 0.35
+    /// Box outline width in pixels at 1080p. Connector lines are drawn at
+    /// two thirds of it.
+    public var lineWidth = 1.5
     /// Line and label color, as #RRGGBB.
     public var color = "#3CFF8C"
     public var labels = LabelStyle.full
@@ -81,6 +84,7 @@ public struct BlobSettings: Codable, Equatable, Sendable {
     public static let reselectJitterRange = 0.0...1.0
     public static let thresholdRange = 0.0...1.0
     public static let lineProbabilityRange = 0.0...1.0
+    public static let lineWidthRange = 0.5...6.0
     public static let seedRange = 0...999_999
 
     public init() {}
@@ -98,6 +102,7 @@ public struct BlobSettings: Codable, Equatable, Sendable {
         invert = c.lenient(Bool.self, .invert) ?? d.invert
         lineProbability = (c.lenient(Double.self, .lineProbability) ?? d.lineProbability)
             .clamped(to: Self.lineProbabilityRange)
+        lineWidth = (c.lenient(Double.self, .lineWidth) ?? d.lineWidth).clamped(to: Self.lineWidthRange)
         color = c.lenient(String.self, .color).flatMap { RGB(hex: $0) != nil ? $0 : nil } ?? d.color
         labels = c.lenient(LabelStyle.self, .labels) ?? d.labels
         seed = (c.lenient(Int.self, .seed) ?? d.seed).clamped(to: Self.seedRange)
