@@ -17,7 +17,9 @@ struct SettingsApp: App {
         Window("Understudy Effects", id: "preview-and-settings") {
             SettingsWindow(model: model)
         }
-        .defaultSize(width: 1300, height: 620)
+        // Height comes from the settings column (see SettingsWindow); a
+        // default below it is raised to fit.
+        .defaultSize(width: 1300, height: 0)
         .windowResizability(.contentMinSize)
     }
 }
@@ -65,10 +67,16 @@ struct SettingsWindow: View {
             PreviewPane(preview: preview)
                 .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
             Divider()
-            EffectsForm(model: model)
-                .frame(width: 400)
+            // The column's full height is the window's minimum, so every
+            // control shows without scrolling; a taller window keeps it at
+            // the top.
+            VStack(spacing: 0) {
+                EffectsForm(model: model)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .frame(width: 400)
         }
-        .frame(minHeight: 560)
         .onAppear { preview.start() }
         .onDisappear { preview.stop() }
     }
