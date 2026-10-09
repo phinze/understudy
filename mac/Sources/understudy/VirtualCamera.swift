@@ -1,12 +1,13 @@
 import CoreMedia
 import CoreMediaIO
 import Foundation
+import UnderstudyShared
 
 /// VirtualCamera is the host's view of our own extension's device, through
 /// the CoreMediaIO C API: it watches the demand property and writes frames
 /// into the sink stream.
 final class VirtualCamera {
-    static let deviceUID = "6C1A4F2E-9B0D-4E57-A3C8-2F7D1B5E8C40"
+    static let deviceUID = virtualCameraUID
 
     let deviceID: CMIOObjectID
     private let sinkStreamID: CMIOStreamID

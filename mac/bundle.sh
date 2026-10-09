@@ -15,8 +15,9 @@ set -euo pipefail
 # Without the profiles this still builds and ad-hoc signs, which is enough to
 # check that everything compiles and assembles, but sysextd will refuse it.
 #
-# It also builds "Understudy Settings.app", the effects editor. That one has
-# no restricted entitlements, so it needs no profile of its own.
+# It also builds "Understudy Settings.app", the effects editor. Its only
+# entitlement is the camera (for its preview), which isn't restricted, so it
+# needs no profile of its own.
 #
 #   ./bundle.sh            build + assemble + sign into .build/
 #   ./bundle.sh --install  ...then copy to /Applications and activate
@@ -125,7 +126,8 @@ codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
 codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
     --entitlements "$ENT_DIR/host.entitlements" "$APP_DIR"
 
-codesign --force --sign "$IDENTITY" --options runtime --timestamp=none "$SETTINGS_DIR"
+codesign --force --sign "$IDENTITY" --options runtime --timestamp=none \
+    --entitlements Resources/settings.entitlements "$SETTINGS_DIR"
 
 codesign --verify --strict --deep "$APP_DIR"
 codesign --verify --strict "$SETTINGS_DIR"

@@ -2,19 +2,23 @@ import AppKit
 import SwiftUI
 import UnderstudyShared
 
-/// Understudy Settings edits effects.json and nothing else. It never touches
-/// a camera or talks to the agent: the agent watches the file and picks up
-/// each save, so opening or quitting this app can't disturb a meeting.
+/// Understudy Settings edits effects.json beside a live preview of the
+/// Understudy camera. It never talks to the agent: the agent watches the file
+/// and picks up each save. The preview is just another viewer, so opening
+/// this mid-meeting joins the camera rather than disturbing it.
 @main
 struct SettingsApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var model = SettingsModel()
 
     var body: some Scene {
-        Window("Understudy Effects", id: "effects") {
-            EffectsForm(model: model)
+        // A new id from the single-column version, so macOS doesn't restore
+        // that window's narrow, tall frame onto this one.
+        Window("Understudy Effects", id: "preview-and-settings") {
+            SettingsWindow(model: model)
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 1300, height: 620)
+        .windowResizability(.contentMinSize)
     }
 }
 
@@ -47,6 +51,26 @@ final class SettingsModel {
             settings = EffectSettings()
             saveError = "effects.json is unreadable (\(error.localizedDescription)); the next change overwrites it."
         }
+    }
+}
+
+/// The preview fills the left and grows with the window; the settings keep a
+/// fixed column on the right.
+struct SettingsWindow: View {
+    let model: SettingsModel
+    @State private var preview = CameraPreview()
+
+    var body: some View {
+        HStack(spacing: 0) {
+            PreviewPane(preview: preview)
+                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            EffectsForm(model: model)
+                .frame(width: 400)
+        }
+        .frame(minHeight: 560)
+        .onAppear { preview.start() }
+        .onDisappear { preview.stop() }
     }
 }
 
@@ -114,8 +138,6 @@ struct EffectsForm: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var colorBinding: Binding<Color> {

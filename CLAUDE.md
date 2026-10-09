@@ -23,8 +23,9 @@ All in `mac/` (Swift, SwiftPM), plus the nix-darwin module in `nix/`:
   configured by `~/.local/state/understudy/effects.json`, which it watches.
   `understudy render-effect IN OUT [SETTINGS]` runs a clip or still through
   the same code.
-- `Sources/understudy-settings/` - Understudy Settings.app, a SwiftUI editor
-  for effects.json and nothing else: no camera, no talking to the agent.
+- `Sources/understudy-settings/` - Understudy Settings.app: a SwiftUI editor
+  for effects.json beside a live preview of the Understudy camera. It never
+  talks to the agent; the preview is just another viewer.
 - `Sources/UnderstudyShared/` - The effects.json schema both of those share.
   Decoding clamps or defaults bad fields instead of failing.
 - `bundle.sh` - Builds, assembles and signs `Understudy.app` outside Nix.

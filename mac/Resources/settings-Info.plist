@@ -14,6 +14,8 @@
     <string>0.1</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Understudy Settings can preview the Understudy camera so you can see your effects as a meeting would.</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 </dict>
