@@ -18,12 +18,12 @@ final class VirtualCamera {
     /// Finds our device among the system's CMIO devices, or returns nil if
     /// the extension isn't (yet) visible to this process.
     init?() {
-        let all = Self.devices()
-        guard let device = all.first(where: { Self.uid(of: $0) == Self.deviceUID }) else {
-            log.debug("our device not among \(all.count) CMIO devices: \(all.map { Self.uid(of: $0) ?? "?" }, privacy: .public)")
+        let all = CMIO.devices()
+        guard let device = all.first(where: { CMIO.uid(of: $0) == Self.deviceUID }) else {
+            log.debug("our device not among \(all.count) CMIO devices: \(all.map { CMIO.uid(of: $0) ?? "?" }, privacy: .public)")
             return nil
         }
-        let streams = Self.objectIDs(device, selector: kCMIODevicePropertyStreams)
+        let streams = CMIO.objectIDs(device, selector: kCMIODevicePropertyStreams)
         // Directions are from the system's point of view: a camera's normal
         // stream is 1 (input to the system), so our sink is the 0 (output).
         // Getting this backwards makes the host a second *viewer* of the
@@ -41,21 +41,17 @@ final class VirtualCamera {
     /// The number of apps streaming from the virtual camera, as published
     /// by the extension's 'dmnd' property.
     func demand() -> Int {
-        var addr = Self.address(fourCC("dmnd"))
-        var value: Unmanaged<CFString>?
-        var used: UInt32 = 0
-        let size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        let err = CMIOObjectGetPropertyData(deviceID, &addr, 0, nil, size, &used, &value)
-        guard err == noErr, let str = value?.takeRetainedValue() else {
-            log.error("reading demand failed: \(err)")
+        do {
+            return Int(try CMIO.string(deviceID, CMIO.demandSelector)) ?? 0
+        } catch {
+            log.error("reading demand failed: \((error as NSError).code)")
             return 0
         }
-        return Int(str as String) ?? 0
     }
 
     /// Calls `handler` on `queue` whenever the extension says demand changed.
     func onDemandChange(queue: DispatchQueue, _ handler: @escaping () -> Void) {
-        var addr = Self.address(fourCC("dmnd"))
+        var addr = CMIO.address(CMIO.demandSelector)
         let err = CMIOObjectAddPropertyListenerBlock(deviceID, &addr, queue) { _, _ in handler() }
         if err != noErr {
             log.error("listening for demand failed: \(err)")
@@ -65,7 +61,7 @@ final class VirtualCamera {
     /// Tells the extension our state through its writable 'stat' property,
     /// which picks how the card looks. Empty means nothing special.
     func setStatus(_ status: String) {
-        var addr = Self.address(fourCC("stat"))
+        var addr = CMIO.address(CMIO.statusSelector)
         var value = status as CFString
         let err = withUnsafePointer(to: &value) {
             CMIOObjectSetPropertyData(deviceID, &addr, 0, nil, UInt32(MemoryLayout<CFString>.size), $0)
@@ -134,44 +130,8 @@ final class VirtualCamera {
 
     // MARK: CMIO helpers
 
-    private static func address(_ selector: UInt32) -> CMIOObjectPropertyAddress {
-        CMIOObjectPropertyAddress(
-            mSelector: CMIOObjectPropertySelector(selector),
-            mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
-            mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain))
-    }
-
-    private static func devices() -> [CMIOObjectID] {
-        objectIDs(CMIOObjectID(kCMIOObjectSystemObject), selector: kCMIOHardwarePropertyDevices)
-    }
-
-    private static func objectIDs(_ object: CMIOObjectID, selector: Int) -> [CMIOObjectID] {
-        var addr = address(UInt32(selector))
-        var size: UInt32 = 0
-        guard CMIOObjectGetPropertyDataSize(object, &addr, 0, nil, &size) == noErr, size > 0 else {
-            return []
-        }
-        var ids = [CMIOObjectID](repeating: 0, count: Int(size) / MemoryLayout<CMIOObjectID>.size)
-        var used: UInt32 = 0
-        guard CMIOObjectGetPropertyData(object, &addr, 0, nil, size, &used, &ids) == noErr else {
-            return []
-        }
-        return ids
-    }
-
-    private static func uid(of device: CMIOObjectID) -> String? {
-        var addr = address(UInt32(kCMIODevicePropertyDeviceUID))
-        var value: Unmanaged<CFString>?
-        var used: UInt32 = 0
-        let size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-        guard CMIOObjectGetPropertyData(device, &addr, 0, nil, size, &used, &value) == noErr else {
-            return nil
-        }
-        return value?.takeRetainedValue() as String?
-    }
-
     private static func direction(of stream: CMIOStreamID) -> UInt32 {
-        var addr = address(UInt32(kCMIOStreamPropertyDirection))
+        var addr = CMIO.address(UInt32(kCMIOStreamPropertyDirection))
         var value: UInt32 = 0
         var used: UInt32 = 0
         _ = CMIOObjectGetPropertyData(stream, &addr, 0, nil, UInt32(MemoryLayout<UInt32>.size), &used, &value)
@@ -179,6 +139,3 @@ final class VirtualCamera {
     }
 }
 
-func fourCC(_ s: String) -> UInt32 {
-    s.utf8.reduce(0) { $0 << 8 | UInt32($1) }
-}
