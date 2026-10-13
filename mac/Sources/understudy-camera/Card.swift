@@ -163,7 +163,10 @@ final class Card {
         ctx.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
         ctx.strokePath()
 
-        let start = -CGFloat(frameIndex) * (.pi * 2 / 45)
+        // Wrapped to one turn: CoreGraphics drops arcs whose angles run past
+        // a few thousand radians, which an unwrapped count reaches within an
+        // hour of card frames.
+        let start = -CGFloat(frameIndex % 45) * (.pi * 2 / 45)
         ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.8))
         ctx.addArc(center: center, radius: radius, startAngle: start, endAngle: start + .pi * 0.6, clockwise: false)
         ctx.strokePath()

@@ -48,10 +48,15 @@ final class Agent {
     private var nextStage = 0
     private var healthySince: UInt64?
     private var attachAttempts = 0
+    /// Bumped whenever capture starts, resets, or changes what it's holding,
+    /// so a scheduled no-signal recheck can tell it's stale.
+    private var holdGeneration = 0
 
     /// How long video has to flow before a later wedge starts the escalation
     /// over from the quick cycle.
     private static let stableAfter: UInt64 = 30_000_000_000
+    /// How often to reopen the Cam Link while it shows its no-signal screen.
+    private static let noSignalRecheck: TimeInterval = 10
 
     init(deviceName: String, uhubctl: String, notify: Bool, effects: EffectChain) {
         self.deviceName = deviceName
@@ -78,7 +83,7 @@ final class Agent {
     /// watchdog hasn't noticed.
     func kick() {
         queue.async { [self] in
-            log.info("kick (phase=\(self.phase.description, privacy: .public) demand=\(self.demand))")
+            log.notice("kick (phase=\(self.phase.description, privacy: .public) demand=\(self.demand))")
             guard phase != .resetting else {
                 log.info("kick: reset already in progress")
                 return
@@ -122,7 +127,7 @@ final class Agent {
         guard let camera else { return }
         let was = demand
         demand = camera.demand()
-        log.info("demand \(was)→\(self.demand) (phase=\(self.phase.description, privacy: .public))")
+        log.notice("demand \(was)→\(self.demand) (phase=\(self.phase.description, privacy: .public))")
 
         if demand > 0, was == 0 {
             camera.startSink()
@@ -151,14 +156,34 @@ final class Agent {
             return
         }
         phase = .streaming
+        holdGeneration += 1
         setStatus(nil)
         capture.start()
+    }
+
+    /// The Cam Link only picks its formats when it enumerates. Plugged in
+    /// (or reset) with the camera off, it comes up offering just its 4K30
+    /// no-signal mode, and a session open in that mode keeps showing the
+    /// no-signal screen even after the camera comes on. Reopening is the only
+    /// way to find out: still off, the screen comes back and nothing changes;
+    /// on, the stale mode delivers nothing, and the stall watchdog's reset
+    /// re-enumerates it with the camera's real format.
+    private func scheduleNoSignalRecheck() {
+        let generation = holdGeneration
+        queue.asyncAfter(deadline: .now() + Self.noSignalRecheck) { [self] in
+            guard generation == holdGeneration, phase == .streaming, demand > 0 else { return }
+            log.notice("no signal for \(Int(Self.noSignalRecheck))s; reopening \(self.deviceName, privacy: .public) in case a camera came on")
+            capture.stop()
+            capture.start(quietly: true)
+            scheduleNoSignalRecheck()
+        }
     }
 
     private func handle(_ event: CaptureEvent) {
         switch event {
         case .healthy:
             guard phase == .streaming else { return }
+            holdGeneration += 1
             healthySince = nowNanos()
             setStatus(nil)
 
@@ -166,7 +191,11 @@ final class Agent {
             // Not a wedge: the Cam Link is fine, it just has nothing to show.
             // The card covers it, and the status says whether to spin.
             guard phase == .streaming else { return }
+            holdGeneration += 1
             setStatus(hold.rawValue)
+            if hold == .noSignal {
+                scheduleNoSignalRecheck()
+            }
 
         case .unhealthy(let reason):
             guard phase == .streaming, demand > 0 else { return }
@@ -210,6 +239,7 @@ final class Agent {
         let stage = UsbReset.stages[nextStage]
         nextStage += 1
         phase = .resetting
+        holdGeneration += 1
         log.error("reset: \(reason, privacy: .public); trying \(stage.name, privacy: .public)")
         capture.stop()
         setStatus("reconnecting")

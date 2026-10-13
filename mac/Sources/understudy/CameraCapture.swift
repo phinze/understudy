@@ -61,6 +61,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var unhealthy = false
     private var lastSample: FrameSample?
     private var hold: Hold?
+    private var announceFirstFrame = true
     private var watchdog: DispatchSourceTimer?
 
     // Cam Link with a 1080p60 source delivers ~60fps; the virtual camera
@@ -82,7 +83,10 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     var isDevicePresent: Bool { findDevice() != nil }
 
-    func start() {
+    /// Opens the session. `quietly` is for reopening while frames are held:
+    /// the hold carries over and the first frame isn't announced, so the
+    /// card stays exactly as it was unless something actually changes.
+    func start(quietly: Bool = false) {
         guard session == nil else { return }
         guard let device = findDevice() else {
             log.error("capture: \(self.deviceName, privacy: .public) not found")
@@ -133,7 +137,10 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             frames = 0
             unhealthy = false
             lastSample = nil
-            hold = nil
+            announceFirstFrame = !quietly
+            if !quietly {
+                hold = nil
+            }
             startWatchdog()
             // startRunning blocks until the device is streaming, so it stays
             // on the capture queue rather than the caller's.
@@ -160,7 +167,9 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let now = nowNanos()
         if frames == 0 {
             log.info("capture: first frame after \((now - self.startedAt) / 1_000_000)ms")
-            onEvent?(.healthy)
+            if announceFirstFrame {
+                onEvent?(.healthy)
+            }
         } else if unhealthy {
             log.info("capture: frames resumed after \((now - self.lastFrame) / 1_000_000)ms gap")
             onEvent?(.healthy)
@@ -179,14 +188,14 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
         if let reason = holdReason(pixelBuffer) {
             if hold != reason {
-                log.info("capture: holding frames (\(reason.rawValue, privacy: .public))")
+                log.notice("capture: holding frames (\(reason.rawValue, privacy: .public))")
                 hold = reason
                 onEvent?(.held(reason))
             }
             return
         }
         if hold != nil {
-            log.info("capture: live video is back")
+            log.notice("capture: live video is back")
             hold = nil
             onEvent?(.healthy)
         }
