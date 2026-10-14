@@ -42,6 +42,14 @@ let backdropRefreshNanos: UInt64 = 300_000_000_000
 // A few frame intervals, so a single late frame doesn't flash the card.
 let sinkStaleAfterNanos: UInt64 = 300_000_000
 
+// The relay polls the sink this many times per output frame, so a host frame
+// waits a few milliseconds for pickup rather than up to a whole frame. The
+// card still goes out once per frame.
+let ticksPerFrame: Int32 = 4
+
+// How often the relay logs how old the frames it forwards are.
+let latencyReportNanos: UInt64 = 10_000_000_000
+
 func nowNanos() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
 
 final class ProviderSource: NSObject, CMIOExtensionProviderSource {
@@ -108,6 +116,14 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var backdropTakenAt: UInt64 = 0
     private var showingLive = false
     private var timer: DispatchSourceTimer?
+    private var ticks = 0
+    /// A sink pull is in flight; don't start another.
+    private var consuming = false
+    /// How old forwarded frames were (host send to app send), for the
+    /// periodic latency line.
+    private var ages: [UInt64] = []
+    private var dropped = 0
+    private var agesSince: UInt64 = 0
 
     init(localizedName: String) {
         card = Card(width: Int(frameWidth), height: Int(frameHeight))
@@ -223,7 +239,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             // Take a fresh backdrop early in every session.
             backdropTakenAt = 0
             let t = DispatchSource.makeTimerSource(flags: .strict, queue: queue)
-            t.schedule(deadline: .now(), repeating: 1.0 / Double(frameRate), leeway: .milliseconds(1))
+            t.schedule(deadline: .now(), repeating: 1.0 / Double(frameRate * ticksPerFrame), leeway: .milliseconds(1))
             t.setEventHandler { [weak self] in self?.tick() }
             t.resume()
             timer = t
@@ -249,6 +265,8 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     func sinkStarted(client: CMIOExtensionClient?) {
         queue.async { [self] in
             sinkClient = client
+            // A pull left waiting on the last host never completes.
+            consuming = false
             log.info("sink start (host pid=\(client?.pid ?? -1))")
         }
     }
@@ -264,15 +282,12 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
 
     private func tick() {
         let now = nowNanos()
-        if let client = sinkClient {
-            // Pull at most one frame per tick. Anything that arrives faster
-            // waits in the host's queue, which is shallow on purpose: a stale
-            // backlog is worse than a dropped frame.
-            sinkStream.stream.consumeSampleBuffer(from: client) { [weak self] sample, seq, _, _, _ in
-                guard let self, let sample else { return }
-                self.queue.async { self.forward(sample, sequence: seq) }
-            }
+        ticks += 1
+        if let client = sinkClient, !consuming {
+            consume(from: client)
         }
+        reportLatency(now: now)
+        guard ticks % Int(ticksPerFrame) == 0 else { return }
 
         let live = lastSinkFrame != 0 && now - lastSinkFrame < sinkStaleAfterNanos
         if live != showingLive {
@@ -289,12 +304,55 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
     }
 
-    private func forward(_ sample: CMSampleBuffer, sequence: UInt64) {
+    /// Pulls the host's queue down to its newest frame. Pulling one frame per
+    /// tick used to let a single hiccup leave a frame or two queued for good,
+    /// since the host sends about as fast as we pulled: every frame then
+    /// went out that much late. Older frames are dropped instead.
+    private func consume(from client: CMIOExtensionClient) {
+        consuming = true
+        sinkStream.stream.consumeSampleBuffer(from: client) { [weak self] sample, seq, _, hasMore, _ in
+            guard let self else { return }
+            self.queue.async {
+                self.consuming = false
+                guard let sample else { return }
+                let now = nowNanos()
+                self.sinkStream.stream.notifyScheduledOutputChanged(
+                    CMIOExtensionScheduledOutput(sequenceNumber: seq, hostTimeInNanoseconds: now))
+                if hasMore, self.sinkClient === client {
+                    self.dropped += 1
+                    self.consume(from: client)
+                } else {
+                    self.forward(sample)
+                }
+            }
+        }
+    }
+
+    private func reportLatency(now: UInt64) {
+        if agesSince == 0 { agesSince = now }
+        guard now - agesSince >= latencyReportNanos else { return }
+        defer {
+            ages.removeAll(keepingCapacity: true)
+            dropped = 0
+            agesSince = now
+        }
+        guard !ages.isEmpty else { return }
+        ages.sort()
+        let ms = { (n: UInt64) in Double(n) / 1_000_000 }
+        let median = ms(ages[ages.count / 2]), worst = ms(ages[ages.count - 1])
+        log.notice("relay: \(self.ages.count) frames, age median \(median, format: .fixed(precision: 1))ms max \(worst, format: .fixed(precision: 1))ms, dropped \(self.dropped) stale")
+    }
+
+    private func forward(_ sample: CMSampleBuffer) {
         let now = nowNanos()
         lastSinkFrame = now
+        // The host stamps frames with the host clock as it sends them.
+        let sent = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+        if sent.isFinite, sent > 0 {
+            let sentNanos = UInt64(sent * 1_000_000_000)
+            if now > sentNanos { ages.append(now - sentNanos) }
+        }
         maybeRefreshBackdrop(from: sample, now: now)
-        sinkStream.stream.notifyScheduledOutputChanged(
-            CMIOExtensionScheduledOutput(sequenceNumber: sequence, hostTimeInNanoseconds: now))
         guard sourceStreaming else { return }
         sourceStream.stream.send(sample, discontinuity: [], hostTimeInNanoseconds: now)
     }
