@@ -6,11 +6,14 @@ import os.log
 
 let log = Logger(subsystem: "ph.inze.understudy.camera", category: "extension")
 
-// One fixed format for now. Apps pick from what we advertise, and the host
-// scales whatever mode the Cam Link is in down to this before sending it.
+// One fixed size. Apps pick from what we advertise, and the host scales
+// whatever mode the Cam Link is in down to this before sending it.
 let frameWidth: Int32 = 1920
 let frameHeight: Int32 = 1080
-let frameRate: Int32 = 30
+// Live video goes out at up to 60fps, or 30 for an app that asks for it.
+// The card always runs at 30: it barely moves.
+let liveFrameRates: [Int32] = [60, 30]
+let cardFrameRate: Int32 = 30
 
 // The device ID has to be stable across launches. Apps remember the camera
 // you picked by its unique ID, and a fresh UUID per launch would make Zoom
@@ -42,9 +45,8 @@ let backdropRefreshNanos: UInt64 = 300_000_000_000
 // A few frame intervals, so a single late frame doesn't flash the card.
 let sinkStaleAfterNanos: UInt64 = 300_000_000
 
-// The relay polls the sink this many times per output frame, so a host frame
-// waits a few milliseconds for pickup rather than up to a whole frame. The
-// card still goes out once per frame.
+// The relay polls the sink this many times per card frame, so a host frame
+// waits a few milliseconds for pickup rather than up to a whole frame.
 let ticksPerFrame: Int32 = 4
 
 // How often the relay logs how old the frames it forwards are.
@@ -123,6 +125,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     /// periodic latency line.
     private var ages: [UInt64] = []
     private var dropped = 0
+    private var lastForwarded: UInt64 = 0
     private var agesSince: UInt64 = 0
 
     init(localizedName: String) {
@@ -151,10 +154,10 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         ]
         CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, poolAttrs, &bufferPool)
 
-        let frameDuration = CMTime(value: 1, timescale: frameRate)
+        let durations = liveFrameRates.map { CMTime(value: 1, timescale: $0) }
         let format = CMIOExtensionStreamFormat(
-            formatDescription: videoDescription, maxFrameDuration: frameDuration,
-            minFrameDuration: frameDuration, validFrameDurations: nil)
+            formatDescription: videoDescription, maxFrameDuration: durations.max()!,
+            minFrameDuration: durations.min()!, validFrameDurations: durations)
 
         sourceStream = StreamSource(
             localizedName: "understudy.video", streamID: sourceStreamID, streamFormat: format,
@@ -239,7 +242,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             // Take a fresh backdrop early in every session.
             backdropTakenAt = 0
             let t = DispatchSource.makeTimerSource(flags: .strict, queue: queue)
-            t.schedule(deadline: .now(), repeating: 1.0 / Double(frameRate * ticksPerFrame), leeway: .milliseconds(1))
+            t.schedule(deadline: .now(), repeating: 1.0 / Double(cardFrameRate * ticksPerFrame), leeway: .milliseconds(1))
             t.setEventHandler { [weak self] in self?.tick() }
             t.resume()
             timer = t
@@ -354,6 +357,10 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
         maybeRefreshBackdrop(from: sample, now: now)
         guard sourceStreaming else { return }
+        // An app that asked for 30fps gets every other frame. A little slack
+        // keeps jitter from dropping it to 20.
+        guard now - lastForwarded + 3_000_000 >= sourceStream.frameIntervalNanos else { return }
+        lastForwarded = now
         sourceStream.stream.send(sample, discontinuity: [], hostTimeInNanoseconds: now)
     }
 
@@ -418,6 +425,15 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
         [.streamActiveFormatIndex, .streamFrameDuration]
     }
 
+    /// The frame duration apps asked for. Every app shares the one stream, so
+    /// the last one to ask wins. Set on CMIO's queue, read on the relay's.
+    private let lock = NSLock()
+    private var frameDuration = CMTime(value: 1, timescale: liveFrameRates.max()!)
+
+    var frameIntervalNanos: UInt64 {
+        lock.withLock { UInt64(frameDuration.seconds * 1_000_000_000) }
+    }
+
     func streamProperties(forProperties properties: Set<CMIOExtensionProperty>) throws
         -> CMIOExtensionStreamProperties
     {
@@ -426,13 +442,20 @@ final class StreamSource: NSObject, CMIOExtensionStreamSource {
             props.activeFormatIndex = 0
         }
         if properties.contains(.streamFrameDuration) {
-            props.frameDuration = CMTime(value: 1, timescale: frameRate)
+            props.frameDuration = lock.withLock { frameDuration }
         }
         return props
     }
 
-    // Only one format, so there's nothing for a client to change.
-    func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {}
+    // Only one format; the frame rate is the one thing an app can pick.
+    func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {
+        guard let wanted = streamProperties.frameDuration,
+            let valid = streamFormat.validFrameDurations,
+            valid.contains(wanted)
+        else { return }
+        lock.withLock { frameDuration = wanted }
+        log.notice("source frame rate: \(Int((1 / wanted.seconds).rounded()))fps")
+    }
 
     func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool { true }
 
@@ -479,7 +502,7 @@ final class SinkSource: NSObject, CMIOExtensionStreamSource {
             props.activeFormatIndex = 0
         }
         if properties.contains(.streamFrameDuration) {
-            props.frameDuration = CMTime(value: 1, timescale: frameRate)
+            props.frameDuration = CMTime(value: 1, timescale: liveFrameRates.max()!)
         }
         if properties.contains(.streamSinkBufferQueueSize) {
             props.sinkBufferQueueSize = 2

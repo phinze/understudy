@@ -60,14 +60,18 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var frames = 0
     private var unhealthy = false
     private var lastSample: FrameSample?
+    private var repeats = 0
     private var hold: Hold?
     private var announceFirstFrame = true
     private var watchdog: DispatchSourceTimer?
 
-    // Cam Link with a 1080p60 source delivers ~60fps; the virtual camera
-    // advertises 30, so send every other frame-ish. Slightly under 1/30s so
-    // jitter doesn't knock us down to 20.
-    private static let minSendInterval: UInt64 = 30_000_000
+    // The virtual camera runs at up to 60fps, so send everything up to that.
+    // Slightly under 1/60s so jitter doesn't knock a 60p source down to 30.
+    private static let minSendInterval: UInt64 = 14_000_000
+    // Identical frames in a row before we call it frozen. A 30p or 24p
+    // camera over 60Hz HDMI repeats each frame two or three times, so this
+    // has to be more than that.
+    private static let frozenAfterRepeats = 3
     // A healthy Cam Link delivers its first frame in ~100-250ms and then
     // never pauses, so these are generous. Tune once real wedges are logged.
     private static let firstFrameDeadline: UInt64 = 4_000_000_000
@@ -137,6 +141,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             frames = 0
             unhealthy = false
             lastSample = nil
+            repeats = 0
             announceFirstFrame = !quietly
             if !quietly {
                 hold = nil
@@ -202,10 +207,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         onFrame?(pixelBuffer)
     }
 
-    /// Whether this frame should be held back rather than forwarded. Only
-    /// looks at the frames we'd send, not the Cam Link's full 60fps, so a
-    /// 30p source that repeats each frame over 60Hz HDMI isn't read as
-    /// frozen.
+    /// Whether this frame should be held back rather than forwarded.
     private func holdReason(_ buffer: CVPixelBuffer) -> Hold? {
         guard holdsFrames, let sample = FrameSample(buffer) else { return nil }
         defer { lastSample = sample }
@@ -213,7 +215,9 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         // first frame of a session: a meeting that starts with the camera
         // off never sees the logo.
         if sample.isNoSignal { return .noSignal }
-        if sample == lastSample { return .frozen }
+        repeats = sample == lastSample ? repeats + 1 : 0
+        // Once frozen, any repeat keeps it held; a fresh frame ends it.
+        if repeats >= Self.frozenAfterRepeats || (hold == .frozen && repeats > 0) { return .frozen }
         return nil
     }
 
