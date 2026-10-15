@@ -41,7 +41,7 @@ enum FrameDump {
 
         capture.holdsFrames = false
         capture.onEvent = { event in print("event: \(event)") }
-        capture.onFrame = { buffer in
+        capture.onFrame = { buffer, _ in
             let pixels = packed(buffer)
             let elapsed = nowNanos() - started
             let hash = fnv1a(pixels)

@@ -105,7 +105,12 @@ final class VirtualCamera {
 
     /// Enqueues one frame. Drops it if the extension hasn't drained the last
     /// ones yet: falling behind live video should cost frames, not latency.
-    func send(_ pixelBuffer: CVPixelBuffer) {
+    ///
+    /// `captured` is the Cam Link's own timestamp, passed through untouched.
+    /// Restamping with the send time added a few ms of jitter, and Chrome's
+    /// frame-rate limiter read the early ones as too fast and dropped them:
+    /// Meet got 32fps of a 60fps feed, running 80ms behind the bare Cam Link.
+    func send(_ pixelBuffer: CVPixelBuffer, captured: CMTime) {
         guard sinkRunning, let queue else { return }
         guard CMSimpleQueueGetCount(queue) < CMSimpleQueueGetCapacity(queue) else { return }
 
@@ -117,7 +122,7 @@ final class VirtualCamera {
         guard let formatDescription else { return }
 
         var timing = CMSampleTimingInfo()
-        timing.presentationTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
+        timing.presentationTimeStamp = captured
         var sample: CMSampleBuffer?
         let err = CMSampleBufferCreateForImageBuffer(
             allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer, dataReady: true,

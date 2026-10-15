@@ -117,7 +117,9 @@ final class Agent {
         self.camera = camera
         // Only live frames get here (CameraCapture holds the rest back), so
         // effects never draw over the card.
-        capture.onFrame = { [weak camera, effects] buffer in camera?.send(effects.apply(buffer)) }
+        capture.onFrame = { [weak camera, effects] buffer, captured in
+            camera?.send(effects.apply(buffer), captured: captured)
+        }
         camera.onDemandChange(queue: queue) { [weak self] in self?.demandChanged() }
         log.info("attached to virtual camera (device \(camera.deviceID))")
         demandChanged()

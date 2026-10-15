@@ -42,7 +42,7 @@ enum Hold: String {
 /// Elgato logo.
 final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     let deviceName: String
-    var onFrame: ((CVPixelBuffer) -> Void)?
+    var onFrame: ((CVPixelBuffer, CMTime) -> Void)?
     var onEvent: ((CaptureEvent) -> Void)?
     /// Off hands every frame to `onFrame`, held or not. For dump-frames,
     /// which wants to see exactly what the Cam Link sends.
@@ -204,7 +204,7 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             hold = nil
             onEvent?(.healthy)
         }
-        onFrame?(pixelBuffer)
+        onFrame?(pixelBuffer, CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
     }
 
     /// Whether this frame should be held back rather than forwarded.

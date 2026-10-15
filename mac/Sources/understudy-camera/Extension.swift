@@ -126,6 +126,7 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var ages: [UInt64] = []
     private var dropped = 0
     private var lastForwarded: UInt64 = 0
+    private var lastSentToApps: UInt64 = 0
     private var agesSince: UInt64 = 0
 
     init(localizedName: String) {
@@ -349,20 +350,24 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     private func forward(_ sample: CMSampleBuffer) {
         let now = nowNanos()
         lastSinkFrame = now
-        // The host stamps frames with the host clock as it sends them.
-        let sent = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-        if sent.isFinite, sent > 0 {
-            let sentNanos = UInt64(sent * 1_000_000_000)
-            if now > sentNanos { ages.append(now - sentNanos) }
-        }
+        // Frames carry the Cam Link's capture time on the host clock. It goes
+        // out to apps as is: CMIO hands them this host time as the frame's
+        // timing, and send-time stamps jitter by a few ms, which Chrome's
+        // frame-rate limiter reads as frames arriving too fast and drops.
+        let pts = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+        let captured = pts.isFinite && pts > 0 ? min(UInt64(pts * 1_000_000_000), now) : now
+        ages.append(now - captured)
         maybeRefreshBackdrop(from: sample, now: now)
         guard sourceStreaming else { return }
-        // An app that asked for 30fps gets every other frame. A little slack
-        // keeps jitter from dropping it to 20.
-        guard now - lastForwarded + 3_000_000 >= sourceStream.frameIntervalNanos else { return }
-        lastForwarded = now
-        sourceStream.stream.send(sample, discontinuity: [], hostTimeInNanoseconds: now)
+        // An app that asked for 30fps gets every other frame. Paced by
+        // capture time, which is steady, with a little slack for rounding.
+        guard captured >= lastForwarded,
+            captured - lastForwarded + 3_000_000 >= sourceStream.frameIntervalNanos
+        else { return }
+        lastForwarded = captured
+        sendToApps(sample, at: captured)
     }
+
 
     private func maybeRefreshBackdrop(from sample: CMSampleBuffer, now: UInt64) {
         guard showingLive, now - liveSince > backdropSettleNanos,
@@ -401,7 +406,16 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
             log.error("CMSampleBufferCreateForImageBuffer failed: \(err)")
             return
         }
-        sourceStream.stream.send(sample, discontinuity: [], hostTimeInNanoseconds: now)
+        sendToApps(sample, at: now)
+    }
+
+    /// Apps expect frame times to only move forward. Card frames are stamped
+    /// when they're drawn and live ones when they were captured, a few ms
+    /// earlier, so the first live frame after the card gets nudged past it.
+    private func sendToApps(_ sample: CMSampleBuffer, at hostTime: UInt64) {
+        let time = max(hostTime, lastSentToApps + 1)
+        lastSentToApps = time
+        sourceStream.stream.send(sample, discontinuity: [], hostTimeInNanoseconds: time)
     }
 }
 
