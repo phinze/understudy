@@ -32,7 +32,7 @@ enum Hold: String {
 
 /// CameraCapture holds the one and only session on the real Cam Link. It
 /// runs only while some app wants the virtual camera, scales frames to the
-/// virtual camera's 1080p BGRA format, and hands them to `onFrame`. It judges
+/// virtual camera's 1080p NV12 format, and hands them to `onFrame`. It judges
 /// health only from its own frames; deciding what to do about it is the
 /// agent's job.
 ///
@@ -115,10 +115,11 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         }
 
         let output = AVCaptureVideoDataOutput()
-        // AVFoundation scales and converts for us on macOS. BGRA keeps the
-        // extension simple for now; NV12 end to end would be cheaper.
+        // The Cam Link's own NV12, passed through to apps untouched. Offered
+        // BGRA instead, Chrome converted every frame itself and ran 40ms
+        // behind the bare Cam Link, dropping a fifth of the frames.
         output.videoSettings = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
             kCVPixelBufferWidthKey as String: 1920,
             kCVPixelBufferHeightKey as String: 1080,
         ]

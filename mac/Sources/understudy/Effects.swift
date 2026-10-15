@@ -34,6 +34,9 @@ final class EffectChain {
     private var settings = EffectSettings()
     private var pool: CVPixelBufferPool?
     private var poolSize = (width: 0, height: 0)
+    // Live video is NV12; effects draw in BGRA and convert back.
+    private lazy var toBGRA = PixelTransfer(to: kCVPixelFormatType_32BGRA)
+    private lazy var toNV12 = PixelTransfer(to: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
     private let blobs = BlobTracker()
 
     init(_ settings: EffectSettings = EffectSettings()) {
@@ -54,10 +57,9 @@ final class EffectChain {
             settings = next
             blobs.configure(next)
         }
-        guard settings.anyEnabled,
-            CVPixelBufferGetPixelFormatType(source) == kCVPixelFormatType_32BGRA,
-            let out = copy(source)
-        else { return source }
+        guard settings.anyEnabled else { return source }
+        let nv12 = CVPixelBufferGetPixelFormatType(source) != kCVPixelFormatType_32BGRA
+        guard let out = nv12 ? toBGRA.convert(source) : copy(source) else { return source }
 
         CVPixelBufferLockBaseAddress(out, [])
         defer { CVPixelBufferUnlockBaseAddress(out, []) }
@@ -77,7 +79,9 @@ final class EffectChain {
             bytesPerRow: bytesPerRow, context: context)
         if settings.blobs.enabled { blobs.render(frame) }
         context.flush()
-        return out
+        guard nv12 else { return out }
+        CVBufferPropagateAttachments(source, out)
+        return toNV12.convert(out) ?? source
     }
 
     private func copy(_ source: CVPixelBuffer) -> CVPixelBuffer? {

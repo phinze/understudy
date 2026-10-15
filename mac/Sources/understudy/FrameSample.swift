@@ -13,17 +13,23 @@ struct FrameSample: Equatable {
 
     let values: [UInt8]
 
-    /// Samples `buffer`, which must be BGRA. Returns nil for anything else.
+    /// Samples `buffer`, which must be BGRA or NV12. Returns nil for anything
+    /// else. NV12's luma plane is read directly, stretched from video range
+    /// to full so both formats sample alike.
     init?(_ buffer: CVPixelBuffer) {
-        guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA else { return nil }
+        let format = CVPixelBufferGetPixelFormatType(buffer)
+        let videoRange = format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        let planar = videoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        guard planar || format == kCVPixelFormatType_32BGRA else { return nil }
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer)?.assumingMemoryBound(to: UInt8.self) else {
+        let rawBase = planar ? CVPixelBufferGetBaseAddressOfPlane(buffer, 0) : CVPixelBufferGetBaseAddress(buffer)
+        guard let base = rawBase?.assumingMemoryBound(to: UInt8.self) else {
             return nil
         }
         let width = CVPixelBufferGetWidth(buffer)
         let height = CVPixelBufferGetHeight(buffer)
-        let stride = CVPixelBufferGetBytesPerRow(buffer)
+        let stride = planar ? CVPixelBufferGetBytesPerRowOfPlane(buffer, 0) : CVPixelBufferGetBytesPerRow(buffer)
 
         var values = [UInt8](repeating: 0, count: Self.columns * Self.rows)
         for row in 0..<Self.rows {
@@ -31,10 +37,16 @@ struct FrameSample: Equatable {
             let y = (2 * row + 1) * height / (2 * Self.rows)
             for column in 0..<Self.columns {
                 let x = (2 * column + 1) * width / (2 * Self.columns)
-                let p = base + y * stride + x * 4
-                // BT.601 luma, in integers.
-                let gray = (Int(p[2]) * 77 + Int(p[1]) * 150 + Int(p[0]) * 29) >> 8
-                values[row * Self.columns + column] = UInt8(gray)
+                let gray: Int
+                if planar {
+                    let luma = Int(base[y * stride + x])
+                    gray = videoRange ? (luma - 16) * 255 / 219 : luma
+                } else {
+                    let p = base + y * stride + x * 4
+                    // BT.601 luma, in integers.
+                    gray = (Int(p[2]) * 77 + Int(p[1]) * 150 + Int(p[0]) * 29) >> 8
+                }
+                values[row * Self.columns + column] = UInt8(clamping: gray)
             }
         }
         self.values = values

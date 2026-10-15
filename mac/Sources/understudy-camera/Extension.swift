@@ -3,6 +3,7 @@ import CoreMediaIO
 import Foundation
 import IOKit.audio
 import os.log
+import VideoToolbox
 
 let log = Logger(subsystem: "ph.inze.understudy.camera", category: "extension")
 
@@ -102,6 +103,11 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var sinkStream: SinkSource!
     private var videoDescription: CMFormatDescription!
     private var bufferPool: CVPixelBufferPool!
+    /// BGRA buffers for drawing the card and blurring the backdrop, which
+    /// `transfer` converts to and from the NV12 that apps get.
+    private var drawPool: CVPixelBufferPool!
+    private var transfer: VTPixelTransferSession?
+    private var cardDescription: CMFormatDescription?
     private let card: Card
     private var status = ""
 
@@ -142,18 +148,32 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         device = CMIOExtensionDevice(
             localizedName: localizedName, deviceID: deviceID, legacyDeviceID: nil, source: self)
 
+        // NV12 like the Cam Link, so apps get its frames untouched. The card
+        // still draws in BGRA and is converted on the way out.
         CMVideoFormatDescriptionCreate(
-            allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_32BGRA,
+            allocator: kCFAllocatorDefault, codecType: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
             width: frameWidth, height: frameHeight, extensions: nil,
             formatDescriptionOut: &videoDescription)
 
-        let poolAttrs: NSDictionary = [
-            kCVPixelBufferWidthKey: frameWidth,
-            kCVPixelBufferHeightKey: frameHeight,
-            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferIOSurfacePropertiesKey: [:] as NSDictionary,
-        ]
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, poolAttrs, &bufferPool)
+        func pool(_ format: OSType) -> CVPixelBufferPool? {
+            let attrs: NSDictionary = [
+                kCVPixelBufferWidthKey: frameWidth,
+                kCVPixelBufferHeightKey: frameHeight,
+                kCVPixelBufferPixelFormatTypeKey: format,
+                kCVPixelBufferIOSurfacePropertiesKey: [:] as NSDictionary,
+            ]
+            var pool: CVPixelBufferPool?
+            CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs, &pool)
+            return pool
+        }
+        bufferPool = pool(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+        drawPool = pool(kCVPixelFormatType_32BGRA)
+        VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &transfer)
+        if let transfer {
+            VTSessionSetProperty(
+                transfer, key: kVTPixelTransferPropertyKey_DestinationYCbCrMatrix,
+                value: kCVImageBufferYCbCrMatrix_ITU_R_709_2)
+        }
 
         let durations = liveFrameRates.map { CMTime(value: 1, timescale: $0) }
         let format = CMIOExtensionStreamFormat(
@@ -373,7 +393,8 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         guard showingLive, now - liveSince > backdropSettleNanos,
             backdropTakenAt == 0 || now - backdropTakenAt > backdropRefreshNanos,
             let frame = CMSampleBufferGetImageBuffer(sample),
-            let fresh = Backdrop.blur(frame)
+            let drawn = convert(frame, using: drawPool),
+            let fresh = Backdrop.blur(drawn)
         else { return }
         backdropTakenAt = now
         backdrop = fresh
@@ -385,22 +406,44 @@ final class DeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
     }
 
+    /// Copies `source` into a fresh buffer from `pool`, converting formats.
+    private func convert(_ source: CVPixelBuffer, using pool: CVPixelBufferPool) -> CVPixelBuffer? {
+        var out: CVPixelBuffer?
+        guard let transfer,
+            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &out) == kCVReturnSuccess,
+            let out,
+            VTPixelTransferSessionTransferImage(transfer, from: source, to: out) == noErr
+        else { return nil }
+        return out
+    }
+
     private func emitCard(now: UInt64) {
-        var buffer: CVPixelBuffer?
-        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, bufferPool, &buffer) == kCVReturnSuccess,
-            let buffer
+        var drawn: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, drawPool, &drawn) == kCVReturnSuccess,
+            let drawn
         else {
             log.error("pixel buffer pool exhausted, dropping frame")
             return
         }
-        card.render(into: buffer)
+        card.render(into: drawn)
+        guard let buffer = convert(drawn, using: bufferPool) else {
+            log.error("converting the card to NV12 failed, dropping frame")
+            return
+        }
+        // The conversion attaches color details the stream's bare format
+        // lacks, so describe card frames from the frames themselves.
+        if cardDescription == nil || !CMVideoFormatDescriptionMatchesImageBuffer(cardDescription!, imageBuffer: buffer) {
+            CMVideoFormatDescriptionCreateForImageBuffer(
+                allocator: kCFAllocatorDefault, imageBuffer: buffer, formatDescriptionOut: &cardDescription)
+        }
+        guard let cardDescription else { return }
 
         var timing = CMSampleTimingInfo()
         timing.presentationTimeStamp = CMClockGetTime(CMClockGetHostTimeClock())
         var sample: CMSampleBuffer?
         let err = CMSampleBufferCreateForImageBuffer(
             allocator: kCFAllocatorDefault, imageBuffer: buffer, dataReady: true,
-            makeDataReadyCallback: nil, refcon: nil, formatDescription: videoDescription,
+            makeDataReadyCallback: nil, refcon: nil, formatDescription: cardDescription,
             sampleTiming: &timing, sampleBufferOut: &sample)
         guard err == noErr, let sample else {
             log.error("CMSampleBufferCreateForImageBuffer failed: \(err)")

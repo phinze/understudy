@@ -6,7 +6,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// FrameDump grabs a few seconds of frames from the Cam Link exactly as the
-/// agent sees them (scaled to 1080p BGRA by CameraCapture) and writes them
+/// agent sees them (scaled to 1080p by CameraCapture, saved as BGRA) and writes them
 /// to a directory: a PNG and raw BGRA of the first, middle and last frame,
 /// plus one line per frame with its hash, how much it moved since the
 /// previous one, and what the hold detector makes of it. It's how we learn
@@ -103,9 +103,13 @@ enum FrameDump {
         print("wrote \(kept.map(\.name).joined(separator: "/")) .png and .bgra to \(dir.path)")
     }
 
-    /// Copies a BGRA buffer into a tightly packed array, dropping any row
+    private static let toBGRA = PixelTransfer(to: kCVPixelFormatType_32BGRA)
+
+    /// Copies a frame into a tightly packed BGRA array, dropping any row
     /// padding so frames compare and save byte for byte.
-    private static func packed(_ buffer: CVPixelBuffer) -> [UInt8] {
+    private static func packed(_ frame: CVPixelBuffer) -> [UInt8] {
+        let isBGRA = CVPixelBufferGetPixelFormatType(frame) == kCVPixelFormatType_32BGRA
+        guard let buffer = isBGRA ? frame : toBGRA.convert(frame) else { return [] }
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
         let width = CVPixelBufferGetWidth(buffer)
